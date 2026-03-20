@@ -61,6 +61,7 @@ models/
 
 # Data (optional exclude)
 # data/
+data/rag_embeddings.db
 
 # OS-specific
 Thumbs.db

@@ -1,0 +1,31 @@
+flowchart TD
+    U[Telegram User] --> TG[Telegram API]
+    TG --> APP[app.py\nBot Runtime]
+
+    APP --> H[bot/handlers.py\nCommand Handlers]
+    H --> MEM[utils/memory.py\nLast 3 interactions per user]
+    H --> QA[rag/qa.py\nRAG QA Orchestrator]
+    H --> VISION[vision/processor.py\nBLIP Caption + Tags]
+
+    QA --> RAG[rag/system.py\nRAG Retrieval]
+    QA --> LLM[rag/llm.py\nOllama LLM + Fallback]
+    QA --> QCACHE[utils/cache.py\nQueryCache]
+
+    RAG --> DOCS[data/*.md, data/*.txt\nKnowledge Documents]
+    RAG --> ECACHE[utils/cache.py\nEmbeddingCache]
+    RAG --> ST[sentence-transformers\nall-MiniLM-L6-v2]
+    RAG --> SQLITE[(SQLite DB\ndata/rag_embeddings.db)]
+
+    BLD[scripts/build_vector_db.py\nOne-time / manual DB build] --> SQLITE
+
+    VISION --> BLIP[Salesforce BLIP\nImage Caption Model]
+
+    APP --> LOGS[(logs/geniebot_YYYYMMDD.log)]
+
+    classDef store fill:#e8f5e9,stroke:#2e7d32,stroke-width:1px;
+    classDef model fill:#e3f2fd,stroke:#1565c0,stroke-width:1px;
+    classDef app fill:#fff3e0,stroke:#ef6c00,stroke-width:1px;
+
+    class SQLITE,LOGS,DOCS store;
+    class ST,BLIP,LLM model;
+    class APP,H,QA,RAG,VISION app;

@@ -54,6 +54,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Use these commands:\n"
         "• /ask <query> - Ask questions from local documents\n"
         "• /image - Upload an image for caption + tags\n"
+        "• /summarize [chat|image] - Summarize your recent interaction\n"
         "• /help - Show usage instructions\n\n"
         "GenieBot keeps your last 3 interactions for better continuity."
     )
@@ -72,10 +73,81 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "2. /image\n"
         "   Upload an image after this command.\n"
         "   GenieBot returns one caption and three tags.\n\n"
-        "3. /start\n"
+        "3. /summarize [chat|image]\n"
+        "   Summarize your latest chat or latest image result.\n\n"
+        "4. /start\n"
         "   Shows the quick command summary."
     )
     await _safe_reply_text(update.message, help_text, markdown=True)
+
+
+async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /summarize command for recent chat or image interactions."""
+    user_id = update.effective_user.id
+    logger.info(f"User {user_id} used /summarize command")
+
+    user_memory = context.bot_data.get("user_memory")
+    llm = context.bot_data.get("llm")
+    if not user_memory:
+        await _safe_reply_text(update.message, "❌ Memory system not initialized", markdown=False)
+        return
+
+    history = user_memory.get_history(user_id)
+    if not history:
+        await _safe_reply_text(update.message, "📝 No interactions found to summarize yet.", markdown=False)
+        return
+
+    mode = (context.args[0].strip().lower() if context.args else "").strip()
+    if mode and mode not in {"chat", "image"}:
+        await _safe_reply_text(update.message, "Usage: /summarize [chat|image]", markdown=False)
+        return
+
+    target = None
+    if mode == "image":
+        for item in reversed(history):
+            if item.get("type") == "image":
+                target = item
+                break
+    elif mode == "chat":
+        for item in reversed(history):
+            if item.get("type") == "text":
+                target = item
+                break
+    else:
+        target = history[-1]
+
+    if not target:
+        await _safe_reply_text(update.message, f"No {mode} interaction found to summarize.", markdown=False)
+        return
+
+    processing_msg = await update.message.reply_text("📝 Summarizing the last interaction...")
+
+    interaction_type = target.get("type", "text")
+    query = target.get("query", "")
+    response = target.get("response", "")
+
+    if not llm:
+        summary = f"Latest {interaction_type}: {response[:220]}"
+        await _safe_reply_text(update.message, f"📝 **Summary:**\n{summary}", markdown=True)
+        return
+
+    summary_prompt = (
+        "Summarize this user interaction in 1-2 short sentences. "
+        "Return only the summary text.\n\n"
+        f"Interaction type: {interaction_type}\n"
+        f"User input: {query}\n"
+        f"Bot response: {response}"
+    )
+
+    summary = llm.generate(summary_prompt, temperature=0.2)
+    if isinstance(summary, str) and summary.strip().lower().startswith("error:"):
+        summary = response[:220]
+
+    final_text = f"📝 **Summary:**\n{summary}"
+    try:
+        await processing_msg.edit_text(final_text, parse_mode="Markdown")
+    except Exception:
+        await _safe_reply_text(update.message, final_text, markdown=True)
 
 
 async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

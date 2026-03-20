@@ -22,6 +22,7 @@ from bot import (
     start,
     help_command,
     ask_command,
+    summarize_command,
     image_command,
     handle_image,
     error_handler
@@ -206,6 +207,7 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("ask", ask_command))
+    application.add_handler(CommandHandler("summarize", summarize_command))
     application.add_handler(CommandHandler("image", image_command))
     
     # Message handlers
