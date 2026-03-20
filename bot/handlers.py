@@ -16,9 +16,10 @@ async def _safe_reply_text(message, text: str, markdown: bool = True) -> None:
     """Reply with markdown first and fallback to plain text if parsing fails."""
     if markdown:
         try:
-            await message.reply_text(text, parse_mode="MarkdownV2")
+            await message.reply_text(text, parse_mode="Markdown")
             return
         except Exception:
+            # If markdown fails, try without formatting
             pass
     await message.reply_text(text)
 
@@ -35,48 +36,32 @@ async def _send_long_response(message, text: str, markdown: bool = True) -> None
 
 
 def _convert_markdown_to_telegram(text: str) -> str:
-    """Convert Markdown headings and formatting to Telegram MarkdownV2."""
+    """Convert Markdown to plain text with emoji headers (Telegram Markdown doesn't support #)."""
     lines = text.split('\n')
     converted = []
     
     for line in lines:
-        # Convert ### Heading -> 📌 **Heading**
+        # Convert ### Heading -> 📌 Heading
         if line.startswith('### '):
             heading = line[4:].strip()
-            # Don't escape heading text to preserve formatting
-            converted.append(f"📌 **{heading}**")
-        # Convert ## Heading -> 🔹 **Heading**
+            converted.append(f"📌 *{heading}*")
+        # Convert ## Heading -> 🔹 Heading
         elif line.startswith('## '):
             heading = line[3:].strip()
-            converted.append(f"🔹 **{heading}**")
-        # Convert # Heading -> 📍 **Heading**
+            converted.append(f"🔹 *{heading}*")
+        # Convert # Heading -> 📍 Heading
         elif line.startswith('# '):
             heading = line[2:].strip()
-            converted.append(f"📍 **{heading}**")
+            converted.append(f"📍 *{heading}*")
         else:
-            # Escape special chars but preserve * and _ for formatting
-            converted.append(_escape_markdown_v2(line, preserve_formatting=True))
+            converted.append(line)
     
     return '\n'.join(converted)
 
 
 def _escape_markdown_v2(text: str, preserve_formatting: bool = False) -> str:
-    """
-    Escape special characters for Telegram MarkdownV2.
-    If preserve_formatting=True, keeps *, _, **, __ for bold/italic.
-    """
-    # Characters that need escaping in MarkdownV2 (excluding * and _ for formatting)
-    special_chars = ['[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-    
-    escaped = text
-    for char in special_chars:
-        escaped = escaped.replace(char, f'\\{char}')
-    
-    # Only escape * and _ if not preserving formatting
-    if not preserve_formatting:
-        escaped = escaped.replace('*', '\\*').replace('_', '\\_')
-    
-    return escaped
+    """For Markdown (not MarkdownV2), just return text as-is since basic Markdown is forgiving."""
+    return text
 
 
 def _format_sources(sources: dict) -> str:
@@ -97,11 +82,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (
         "🤖 *GenieBot: RAG & Vision AI Assistant*\n\n"
         "Use these commands:\n"
-        "• /ask <query> \\- Ask questions from local documents\n"
-        "• /image \\- Upload an image for caption \\+ tags\n"
-        "• /summarize \\[chat|image\\] \\- Summarize your recent interaction\n"
-        "• /help \\- Show usage instructions\n\n"
-        "GenieBot keeps your last 3 interactions for better continuity\\."
+        "• /ask <query> - Ask questions from local documents\n"
+        "• /image - Upload an image for caption + tags\n"
+        "• /summarize [chat|image] - Summarize your recent interaction\n"
+        "• /help - Show usage instructions\n\n"
+        "GenieBot keeps your last 3 interactions for better continuity."
     )
     await _safe_reply_text(update.message, text, markdown=True)
 
@@ -112,16 +97,16 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     help_text = (
         "📖 *How to use GenieBot*\n\n"
-        "*1\\. /ask <question>*\n"
-        "Example: /ask What is the return policy\\?\n"
-        "GenieBot retrieves relevant document chunks and answers with sources\\.\n\n"
-        "*2\\. /image*\n"
-        "Upload an image after this command\\.\n"
-        "GenieBot returns one caption and three tags\\.\n\n"
-        "*3\\. /summarize \\[chat|image\\]*\n"
-        "Summarize your latest chat or latest image result\\.\n\n"
-        "*4\\. /start*\n"
-        "Shows the quick command summary\\."
+        "*1. /ask <question>*\n"
+        "Example: /ask What is the return policy?\n"
+        "GenieBot retrieves relevant document chunks and answers with sources.\n\n"
+        "*2. /image*\n"
+        "Upload an image after this command.\n"
+        "GenieBot returns one caption and three tags.\n\n"
+        "*3. /summarize [chat|image]*\n"
+        "Summarize your latest chat or latest image result.\n\n"
+        "*4. /start*\n"
+        "Shows the quick command summary."
     )
     await _safe_reply_text(update.message, help_text, markdown=True)
 
@@ -190,7 +175,7 @@ async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     final_text = f"📝 *Summary:*\n{summary}"
     try:
-        await processing_msg.edit_text(final_text, parse_mode="MarkdownV2")
+        await processing_msg.edit_text(final_text, parse_mode="Markdown")
     except Exception:
         await _safe_reply_text(update.message, final_text, markdown=False)
 
@@ -233,14 +218,13 @@ async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if user_memory:
             user_memory.add_interaction(user_id, question, answer, "text")
 
-        # Format response with proper MarkdownV2 and heading conversion
+        # Format response with heading conversion
         formatted_answer = _convert_markdown_to_telegram(answer)
         source_list = ""
         if sources:
             source_list = "\n\n📚 *Sources:*\n"
             for source in sources.keys():
-                # Escape source filenames but preserve formatting
-                source_list += f"• {_escape_markdown_v2(source, preserve_formatting=True)}\n"
+                source_list += f"• {source}\n"
         
         response = f"🤖 *Answer:*\n{formatted_answer}{source_list}"
         await _send_long_response(update.message, response, markdown=True)
@@ -297,7 +281,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         response = f"📸 *Caption:*\n{caption}\n\n🏷️ *Tags:* {', '.join(tags)}"
         try:
-            await processing_msg.edit_text(response, parse_mode="MarkdownV2")
+            await processing_msg.edit_text(response, parse_mode="Markdown")
         except Exception:
             await processing_msg.edit_text(response)
 

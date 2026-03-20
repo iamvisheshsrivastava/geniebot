@@ -105,6 +105,15 @@ Final Answer:"""
             temperature=0.2,
         )
 
+        # Clean up answer - remove any preamble if LLM included it
+        if isinstance(answer, str):
+            # Remove common preambles the LLM might add
+            for preamble in ["**Answer:**", "Answer:", "Final Answer:", "Based on the context:"]:
+                if answer.strip().lower().startswith(preamble.lower()):
+                    answer = answer[len(preamble):].strip()
+            # Take only first 1000 chars to prevent context bleeding
+            answer = answer[:1000]
+
         # Do not cache or return failed model responses as normal answers.
         if isinstance(answer, str) and answer.strip().lower().startswith("error:"):
             logger.error(f"LLM generation failed for question '{question[:50]}...': {answer}")
