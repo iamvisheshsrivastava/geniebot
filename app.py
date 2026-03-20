@@ -5,6 +5,8 @@ Main application entry point
 
 import asyncio
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
@@ -40,6 +42,8 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama2")
 OLLAMA_MODEL_PRIORITY = os.getenv("OLLAMA_MODEL_PRIORITY", "")
 OLLAMA_FALLBACK_MODELS = os.getenv("OLLAMA_FALLBACK_MODELS", "tinyllama")
+STATUS_HOST = os.getenv("STATUS_HOST", "0.0.0.0")
+STATUS_PORT = int(os.getenv("PORT", os.getenv("STATUS_PORT", "8080")))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 DATA_DIR = Path("data")
 
@@ -76,6 +80,120 @@ def _resolve_available_model(preferred: str, available: list[str]) -> Optional[s
     return None
 logger.info("GenieBot Starting")
 logger.info("="*50)
+
+
+STATUS_PAGE_HTML = """<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GenieBot Service Status</title>
+    <style>
+        :root {
+            --bg-top: #f0f9ff;
+            --bg-bottom: #e0f2fe;
+            --card: #ffffff;
+            --text: #0f172a;
+            --muted: #334155;
+            --accent: #0284c7;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(155deg, var(--bg-top), var(--bg-bottom));
+            color: var(--text);
+            padding: 24px;
+        }
+        .card {
+            width: min(680px, 100%);
+            background: var(--card);
+            border-radius: 20px;
+            padding: 32px 28px;
+            text-align: center;
+            box-shadow: 0 16px 40px rgba(2, 132, 199, 0.16);
+            border: 1px solid rgba(2, 132, 199, 0.12);
+        }
+        h1 {
+            margin: 0 0 12px;
+            font-size: clamp(1.6rem, 2.5vw, 2.2rem);
+            letter-spacing: 0.2px;
+        }
+        p {
+            margin: 10px 0;
+            font-size: 1.05rem;
+            line-height: 1.6;
+            color: var(--muted);
+        }
+        .email {
+            display: inline-block;
+            margin-top: 8px;
+            font-weight: 600;
+            color: var(--accent);
+            text-decoration: none;
+        }
+        .email:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <main class="card" role="main" aria-label="GenieBot status page">
+        <h1>Service running</h1>
+        <p>You can access the bot on Telegram.</p>
+        <p>Feel free to get in touch if you have any questions at</p>
+        <a class="email" href="mailto:contact@visheshsrivastava.com">contact@visheshsrivastava.com</a>
+    </main>
+</body>
+</html>
+"""
+
+
+class _StatusHandler(BaseHTTPRequestHandler):
+    """Simple HTTP handler for service status page and health endpoint."""
+
+    def do_GET(self) -> None:
+        if self.path in ("/", ""):
+            payload = STATUS_PAGE_HTML.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        if self.path == "/health":
+            payload = b'{"status":"ok"}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        self.send_response(404)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"Not Found")
+
+    def log_message(self, fmt: str, *args) -> None:  # noqa: A003
+        logger.debug("Status server: " + fmt, *args)
+
+
+def start_status_server() -> None:
+    """Start a lightweight HTTP server in a daemon thread."""
+    try:
+        server = ThreadingHTTPServer((STATUS_HOST, STATUS_PORT), _StatusHandler)
+    except OSError as exc:
+        logger.warning(f"Could not start status server on {STATUS_HOST}:{STATUS_PORT}: {exc}")
+        return
+
+    thread = threading.Thread(target=server.serve_forever, daemon=True, name="status-server")
+    thread.start()
+    logger.info(f"Status page running at http://{STATUS_HOST}:{STATUS_PORT}/")
 
 
 def initialize_systems() -> dict:
@@ -190,6 +308,9 @@ def main() -> None:
     Main function - start the bot
     """
     logger.info("Creating Telegram application...")
+
+    # Start tiny status UI server for production URL checks.
+    start_status_server()
     
     # Initialize systems
     systems = initialize_systems()
