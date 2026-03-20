@@ -12,5 +12,6 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     ports:
+      - "80:8080"
       - "8080:8080"
     restart: unless-stopped
