@@ -1,6 +1,8 @@
 flowchart TD
     U[Telegram User] --> TG[Telegram API]
     TG --> APP[app.py\nBot Runtime]
+    WEB[Browser/Render Ping] --> STATUS[/ and /health status server]
+    STATUS --> APP
 
     APP --> H[bot/handlers.py\nCommand Handlers]
     H --> MEM[utils/memory.py\nLast 3 interactions per user]
@@ -9,10 +11,10 @@ flowchart TD
 
     QA --> RAG[rag/system.py\nRAG Retrieval]
     QA --> LLM[rag/llm.py\nOllama LLM + Fallback]
-    QA --> QCACHE[utils/cache.py\nQueryCache]
+    QA --> QCACHE[utils/cache.py\nQueryCache (RAM only)]
 
     RAG --> DOCS[data/*.md, data/*.txt\nKnowledge Documents]
-    RAG --> ECACHE[utils/cache.py\nEmbeddingCache]
+    RAG --> ECACHE[utils/cache.py\nEmbeddingCache (RAM only)]
     RAG --> ST[sentence-transformers\nall-MiniLM-L6-v2]
     RAG --> SQLITE[(SQLite DB\ndata/rag_embeddings.db)]
 
@@ -21,11 +23,14 @@ flowchart TD
     VISION --> BLIP[Salesforce BLIP\nImage Caption Model]
 
     APP --> LOGS[(logs/geniebot_YYYYMMDD.log)]
+    APP --> ENV[.env configuration]
 
     classDef store fill:#e8f5e9,stroke:#2e7d32,stroke-width:1px;
     classDef model fill:#e3f2fd,stroke:#1565c0,stroke-width:1px;
     classDef app fill:#fff3e0,stroke:#ef6c00,stroke-width:1px;
+    classDef edge fill:#f3e5f5,stroke:#6a1b9a,stroke-width:1px;
 
-    class SQLITE,LOGS,DOCS store;
+    class SQLITE,LOGS,DOCS,ENV store;
     class ST,BLIP,LLM model;
     class APP,H,QA,RAG,VISION app;
+    class STATUS,WEB edge;

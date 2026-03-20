@@ -1,35 +1,79 @@
-# GenieBot: RAG & Vision AI Assistant
+# GenieBot - RAG + Vision Telegram Assistant
 
-GenieBot is a production-ready Telegram bot that supports:
-- RAG-based question answering from local documents
-- Image captioning and tags from uploaded images
+GenieBot is a local-first Telegram assistant that supports:
+- document-grounded Q&A with RAG
+- image captioning with tags
+- quick summary of the latest chat or image interaction
 
-It uses only open-source/local models and APIs.
+It uses Ollama for generation, SentenceTransformers for embeddings, BLIP for vision, and SQLite for persistent vector storage.
 
-## 1. How to Run Locally
+## Highlights
 
-### Option A: Python (recommended)
+- RAG retrieval with persistent embeddings in SQLite
+- Query and embedding caches in RAM for fast repeated calls
+- Vision pipeline for image caption + tags
+- User memory that keeps the last 3 interactions per user
+- Health/status page at `/` and `/health`
 
-1. Create and activate virtual environment.
+## Tech Stack
 
-Windows:
+- Python 3.10+
+- python-telegram-bot
+- Ollama (local LLM runtime)
+- sentence-transformers/all-MiniLM-L6-v2 (embeddings)
+- Salesforce/blip-image-captioning-base (vision)
+- SQLite (`data/rag_embeddings.db`)
+
+## Current Runtime Settings
+
+- retrieval top_k: 2
+- chunk_size: 200
+- max_tokens: 250
+- user history: last 3 interactions per user
+
+## Project Structure
+
+```text
+app.py                    # Bot bootstrap + status server
+bot/handlers.py           # Telegram command handlers
+rag/system.py             # Chunking, embedding, retrieval, SQLite persistence
+rag/qa.py                 # QA orchestration and prompt flow
+rag/llm.py                # Ollama client + model fallback handling
+vision/processor.py       # Image captioning and tag extraction
+utils/cache.py            # QueryCache + EmbeddingCache (RAM)
+utils/memory.py           # Per-user short history (RAM)
+utils/logger.py           # File + console logging
+data/                     # Knowledge documents + SQLite DB file
+media/                    # Assignment screenshots used below
+docs/diagrams/system-design.mmd
+```
+
+## Setup and Run
+
+### 1) Create and activate virtual environment
+
+Windows (PowerShell):
+
 ```powershell
-python -m venv venv
-.\venv\Scripts\Activate.ps1
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 ```
 
 macOS/Linux:
+
 ```bash
-python -m venv venv
-source venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 ```
 
-2. Install dependencies:
+### 2) Install dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Start Ollama and pull models:
+### 3) Start Ollama and pull models
+
 ```bash
 ollama serve
 ollama pull gemma3:4b
@@ -37,12 +81,10 @@ ollama pull mistral
 ollama pull tinyllama
 ```
 
-4. Configure environment:
-```bash
-cp .env.example .env
-```
+### 4) Configure environment
 
-Set at least:
+Create `.env` from `.env.example` and set:
+
 ```env
 TELEGRAM_BOT_TOKEN=your_token_here
 OLLAMA_BASE_URL=http://localhost:11434
@@ -50,115 +92,83 @@ OLLAMA_MODEL=gemma3:4b
 OLLAMA_MODEL_PRIORITY=mistral,phi3
 OLLAMA_FALLBACK_MODELS=tinyllama
 LOG_LEVEL=INFO
+PORT=8080
 ```
 
-5. (Optional) Prebuild persistent vector DB:
+### 5) Optional: prebuild the embedding DB
+
 ```bash
-python scripts/build_vector_db.py --data-dir data --db-path data/rag_embeddings.db
+python scripts/build_vector_db.py --data-dir data --db-path data/rag_embeddings.db --chunk-size 200 --chunk-overlap 50
 ```
 
-6. Run bot:
+### 6) Run the bot
+
 ```bash
 python app.py
 ```
 
-### Option B: Docker Compose
+## Bot Commands
 
-1. Ensure Ollama is running on host machine.
-2. Configure `.env` as above.
-3. Run:
-```bash
-docker compose up --build -d
-```
+- `/start` - quick intro and commands
+- `/help` - usage guidance
+- `/ask <question>` - document-grounded answer
+- `/image` - upload image for caption + tags
+- `/summarize [chat|image]` - summarize latest interaction
 
-4. Stop:
-```bash
-docker compose down
-```
+## Demo Screenshots
 
-## 2. Models and APIs Used
+### Start
+![Start](media/start.png)
 
-### Bot Interface API
-- Telegram Bot API via `python-telegram-bot`
+### Ask
+![Ask](media/ask.png)
 
-### RAG Models
-- Embedding model: `sentence-transformers/all-MiniLM-L6-v2`
-- LLM generation: Ollama local models
-  - Primary: `gemma3:4b`
-  - Priority fallback list: `mistral, phi3`
-  - Runtime fallback: `tinyllama`
+### Image
+![Image](media/image.png)
 
-### Vision Model
-- `Salesforce/blip-image-captioning-base` (Hugging Face Transformers)
+### Summarize
+![Summarize](media/summarize.png)
 
-### Vector Storage
-- Persistent SQLite database: `data/rag_embeddings.db`
-- Embeddings are persisted and reused across restarts.
+## Architecture Diagram
 
-## 3. System Design Diagram
-
-Diagram source file:
-- `docs/diagrams/system-design.mmd`
-
-Mermaid preview:
+Source: `docs/diagrams/system-design.mmd`
 
 ```mermaid
 flowchart TD
     U[Telegram User] --> TG[Telegram API]
-    TG --> APP[app.py Bot Runtime]
+    TG --> APP[app.py\nBot Runtime]
+    WEB[Browser/Render Ping] --> STATUS[/ and /health status server]
+    STATUS --> APP
 
-    APP --> H[bot/handlers.py Command Handlers]
-    H --> MEM[utils/memory.py Last 3 interactions per user]
-    H --> QA[rag/qa.py RAG QA Orchestrator]
-    H --> VISION[vision/processor.py BLIP Caption + Tags]
+    APP --> H[bot/handlers.py\nCommand Handlers]
+    H --> MEM[utils/memory.py\nLast 3 interactions per user]
+    H --> QA[rag/qa.py\nRAG QA Orchestrator]
+    H --> VISION[vision/processor.py\nBLIP Caption + Tags]
 
-    QA --> RAG[rag/system.py RAG Retrieval]
-    QA --> LLM[rag/llm.py Ollama LLM + Fallback]
-    QA --> QCACHE[utils/cache.py QueryCache]
+    QA --> RAG[rag/system.py\nRAG Retrieval]
+    QA --> LLM[rag/llm.py\nOllama LLM + Fallback]
+    QA --> QCACHE[utils/cache.py\nQueryCache (RAM only)]
 
-    RAG --> DOCS[data/*.md, data/*.txt]
-    RAG --> ECACHE[utils/cache.py EmbeddingCache]
-    RAG --> ST[sentence-transformers all-MiniLM-L6-v2]
-    RAG --> SQLITE[(SQLite data/rag_embeddings.db)]
+    RAG --> DOCS[data/*.md, data/*.txt\nKnowledge Documents]
+    RAG --> ECACHE[utils/cache.py\nEmbeddingCache (RAM only)]
+    RAG --> ST[sentence-transformers\nall-MiniLM-L6-v2]
+    RAG --> SQLITE[(SQLite DB\ndata/rag_embeddings.db)]
 
-    BLD[scripts/build_vector_db.py] --> SQLITE
+    BLD[scripts/build_vector_db.py\nOne-time / manual DB build] --> SQLITE
+    VISION --> BLIP[Salesforce BLIP\nImage Caption Model]
 
-    VISION --> BLIP[Salesforce BLIP]
     APP --> LOGS[(logs/geniebot_YYYYMMDD.log)]
+    APP --> ENV[.env configuration]
 ```
 
-## 4. Demo Screenshots / GIF
+## Storage and Caching
 
-Add demo assets in:
-- `docs/demo/`
+- Persistent: document chunk embeddings in SQLite (`data/rag_embeddings.db`)
+- RAM only: QueryCache, EmbeddingCache, user interaction history
+- Logs: `logs/geniebot_YYYYMMDD.log` (daily file name, no auto-rotation cleanup)
 
-Suggested files:
-- `docs/demo/01-start.png`
-- `docs/demo/02-ask.png`
-- `docs/demo/03-image.png`
-- `docs/demo/04-summarize.png`
-- `docs/demo/demo.gif`
+## Assignment Notes
 
-Then reference them in this README:
-
-```markdown
-![Start](docs/demo/01-start.png)
-![Ask](docs/demo/02-ask.png)
-![Image](docs/demo/03-image.png)
-![Summarize](docs/demo/04-summarize.png)
-![Demo GIF](docs/demo/demo.gif)
-```
-
-## 5. Commands
-
-- `/start`
-- `/help`
-- `/ask <query>`
-- `/image`
-- `/summarize [chat|image]`
-
-## 6. Notes
-
-- Top-k retrieval currently uses `k=3`.
-- User memory keeps the last 3 interactions per user.
-- Persistent DB is auto-synced at startup if documents/config change.
+- This project runs without Docker.
+- RAG is optimized for concise answers with grounded context.
+- Repeated same questions are served from in-memory query cache when available.
