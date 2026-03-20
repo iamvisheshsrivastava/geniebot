@@ -1,0 +1,36 @@
+Company Policies and Guidelines
+
+1. DATA PRIVACY POLICY
+- User data is processed locally on the server
+- No data is shared with third parties
+- User can request data deletion at any time
+- All communications are encrypted
+
+2. CODE OF CONDUCT
+- Be respectful in all interactions
+- Provide constructive feedback
+- Report bugs and security issues responsibly
+- Follow community guidelines
+
+3. CONTENT POLICY
+- No hate speech or discrimination
+- No explicit or adult content
+- No spam or commercial promotion
+- Respect intellectual property rights
+
+4. TECHNICAL GUIDELINES
+- API calls are rate-limited to 100 requests per minute
+- Maximum image size: 10 MB
+- Maximum document size: 50 MB
+- Supported languages: English
+
+5. INCIDENT RESPONSE
+- Critical bugs are fixed within 24 hours
+- Security issues are addressed immediately
+- Users are notified of any service disruptions
+- Incident reports are maintained for compliance
+
+6. SUPPORT
+- Technical support available 24/7
+- Email support: support@geniebot.ai
+- Response time: within 2 hours

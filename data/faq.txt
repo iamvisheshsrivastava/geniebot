@@ -1,0 +1,25 @@
+FAQ - GenieBot Assistant
+
+Q: What is GenieBot?
+A: GenieBot is an AI-powered Telegram assistant that can answer questions from documents and analyze images using advanced machine learning models.
+
+Q: How do I ask a question?
+A: Use the /ask command followed by your question. For example: /ask What is machine learning?
+
+Q: Can I upload images?
+A: Yes! Use the /image command and upload an image. GenieBot will provide a caption and relevant tags.
+
+Q: How accurate are the responses?
+A: GenieBot uses state-of-the-art language models for accurate answers. However, always verify important information from authoritative sources.
+
+Q: Does GenieBot store my data?
+A: GenieBot maintains a conversation history for context but does not permanently store personal data.
+
+Q: What formats does GenieBot support?
+A: Currently supports text documents (TXT, MD) and common image formats (PNG, JPG, JPEG).
+
+Q: How fast is the response time?
+A: Response time depends on model availability and query complexity. Usually 1-5 seconds.
+
+Q: Is GenieBot free to use?
+A: Yes, GenieBot is completely free and uses open-source models.

@@ -1,0 +1,65 @@
+GenieBot Documentation
+
+INSTALLATION GUIDE
+
+1. Prerequisites:
+   - Python 3.9 or higher
+   - Ollama for local LLM inference
+   - CUDA toolkit (optional, for GPU acceleration)
+
+2. Setup Steps:
+   a. Clone the repository
+   b. Create virtual environment: python -m venv venv
+   c. Activate venv: venv\Scripts\activate
+   d. Install dependencies: pip install -r requirements.txt
+   e. Set up environment variables in .env file
+   f. Run: python app.py
+
+3. Environment Variables:
+   TELEGRAM_BOT_TOKEN=your_token_here
+   OLLAMA_BASE_URL=http://localhost:11434
+   LOG_LEVEL=INFO
+
+USAGE EXAMPLES
+
+Text Query:
+/ask What is artificial intelligence?
+
+Image Analysis:
+/image [Upload an image file]
+
+View History:
+/history
+
+ARCHITECTURE
+
+RAG System:
+1. Documents are loaded and chunked
+2. Embeddings generated using SBERT
+3. Stored in FAISS index
+4. Query retrieval: cosine similarity search
+5. LLM generates response with Ollama
+
+Vision System:
+1. Image received and preprocessed
+2. BLIP model generates caption
+3. Tag extraction from caption
+4. Response formatted and sent
+
+PERFORMANCE METRICS
+
+- RAG Query Latency: 0.5-2 seconds
+- Image Processing: 1-3 seconds
+- Model Loading: 5-10 seconds (first time)
+- Cache Hit Rate: 70-80%
+
+TROUBLESHOOTING
+
+Issue: Ollama connection failed
+Solution: Ensure Ollama is running (ollama serve)
+
+Issue: Out of memory for embeddings
+Solution: Reduce chunk size or use CPU mode
+
+Issue: Slow responses
+Solution: Enable GPU support or use smaller model

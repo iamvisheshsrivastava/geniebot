@@ -1,0 +1,25 @@
+Knowledge Base - Technical Topics
+
+MACHINE LEARNING BASICS
+Machine learning is a subset of artificial intelligence that enables systems to learn and improve from experience. It includes supervised learning (with labeled data), unsupervised learning (pattern discovery), and reinforcement learning (reward-based).
+
+NEURAL NETWORKS
+Neural networks are computing systems inspired by biological neural networks. They consist of interconnected nodes (neurons) organized in layers. Deep neural networks have multiple hidden layers and can learn complex patterns in data.
+
+TRANSFORMERS
+Transformers are a type of neural network architecture based on self-attention mechanisms. They power models like BERT, GPT, and LLAMA. Transformers excel at natural language processing and have scaled to billions of parameters.
+
+EMBEDDINGS
+Embeddings are numerical representations of text or images in high-dimensional space. Sentence embeddings capture semantic meaning, allowing similarity comparisons. Models like SBERT generate 384-dimensional vectors.
+
+VECTOR DATABASES
+Vector databases like FAISS store high-dimensional vectors efficiently. They enable fast similarity search using techniques like clustering and quantization. Critical for RAG systems.
+
+LLMs AND INFERENCE
+Large Language Models (LLMs) are trained on massive text corpora. Inference refers to using these models to generate predictions. Ollama enables local LLM inference without cloud dependencies.
+
+RETRIEVAL AUGMENTED GENERATION (RAG)
+RAG combines document retrieval with generation. It retrieves relevant context from documents, then uses an LLM to generate answers grounded in that context. This improves accuracy and reduces hallucinations.
+
+VISION TRANSFORMERS
+Vision Transformers apply transformer architecture to images. They divide images into patches and process them like tokens. They achieve state-of-the-art results in image classification and captioning.
