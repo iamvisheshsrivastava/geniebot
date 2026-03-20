@@ -6,7 +6,6 @@ Handles image captioning and tag extraction
 import io
 from typing import Tuple, List, Dict
 from PIL import Image
-import requests
 from transformers import BlipProcessor, BlipForConditionalGeneration
 
 from utils.logger import setup_logger

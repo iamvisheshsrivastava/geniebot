@@ -30,6 +30,7 @@ class OllamaLLM:
         self,
         base_url: str = "http://localhost:11434",
         model: str = "llama2",
+        fallback_models: Optional[list[str]] = None,
         timeout: int = 120
     ):
         """
@@ -38,13 +39,35 @@ class OllamaLLM:
         Args:
             base_url: Ollama server base URL
             model: Model name (llama2, mistral, etc.)
+            fallback_models: Ordered fallback model names
             timeout: Request timeout in seconds
         """
         self.base_url = base_url.rstrip("/")
         self.model = model
+        self.fallback_models = [m for m in (fallback_models or []) if m and m != model]
         self.timeout = timeout
         
         self._verify_connection()
+
+    @staticmethod
+    def _should_try_fallback(status_code: int, error_detail: str) -> bool:
+        """Decide whether a failed generation should try fallback models."""
+        text = (error_detail or "").lower()
+
+        model_or_memory_issues = [
+            "not found",
+            "no such model",
+            "unknown model",
+            "out of memory",
+            "insufficient memory",
+            "requires more system memory",
+            "timed out",
+        ]
+
+        if status_code == 404:
+            return True
+
+        return any(marker in text for marker in model_or_memory_issues)
     
     def _verify_connection(self) -> None:
         """Verify connection to Ollama server"""
@@ -80,47 +103,71 @@ class OllamaLLM:
         Returns:
             Generated text
         """
-        logger.debug(f"Generating with model: {self.model}")
-        
-        # Build full prompt with system instructions
         full_prompt = prompt
         if system_prompt:
             full_prompt = f"{system_prompt}\n\n{prompt}"
-        
-        try:
-            response = requests.post(
-                f"{self.base_url}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": full_prompt,
-                    "stream": False,
-                    "temperature": temperature,
-                },
-                timeout=self.timeout
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                generated_text = result.get("response", "").strip()
-                logger.debug(f"Generated {len(generated_text)} characters")
-                return generated_text
-            else:
+
+        models_to_try = [self.model] + [m for m in self.fallback_models if m != self.model]
+        logger.debug(f"Generating with model chain: {models_to_try}")
+
+        last_error = "Error: Failed to generate response"
+
+        for index, model_name in enumerate(models_to_try):
+            try:
+                response = requests.post(
+                    f"{self.base_url}/api/generate",
+                    json={
+                        "model": model_name,
+                        "prompt": full_prompt,
+                        "stream": False,
+                        "temperature": temperature,
+                    },
+                    timeout=self.timeout,
+                )
+
+                if response.status_code == 200:
+                    result = response.json()
+                    generated_text = result.get("response", "").strip()
+                    if model_name != self.model:
+                        logger.warning(f"Switched active Ollama model to fallback: {model_name}")
+                        self.model = model_name
+                    logger.debug(f"Generated {len(generated_text)} characters")
+                    return generated_text
+
                 error_detail = _extract_ollama_error(response)
                 logger.error(
-                    f"Ollama error: {response.status_code}"
+                    f"Ollama error ({model_name}): {response.status_code}"
                     + (f" - {error_detail}" if error_detail else "")
                 )
+
                 if error_detail:
-                    return f"Error: Ollama returned status {response.status_code}. {error_detail}"
-                return f"Error: Received status {response.status_code} from Ollama"
-        
-        except requests.exceptions.Timeout:
-            logger.error("Ollama request timed out")
-            return "Error: Request timed out. Please try again."
-        
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Ollama request failed: {e}")
-            return f"Error: Failed to connect to Ollama. Is it running?"
+                    last_error = f"Error: Ollama returned status {response.status_code}. {error_detail}"
+                else:
+                    last_error = f"Error: Received status {response.status_code} from Ollama"
+
+                has_next_model = index < len(models_to_try) - 1
+                if has_next_model and self._should_try_fallback(response.status_code, error_detail):
+                    logger.warning(f"Trying fallback model after failure on {model_name}")
+                    continue
+
+                return last_error
+
+            except requests.exceptions.Timeout:
+                logger.error(f"Ollama request timed out ({model_name})")
+                last_error = "Error: Request timed out. Please try again."
+
+                has_next_model = index < len(models_to_try) - 1
+                if has_next_model:
+                    logger.warning(f"Trying fallback model after timeout on {model_name}")
+                    continue
+
+                return last_error
+
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Ollama request failed ({model_name}): {e}")
+                return "Error: Failed to connect to Ollama. Is it running?"
+
+        return last_error
     
     def chat(
         self,
@@ -178,7 +225,7 @@ class OllamaLLM:
                 timeout=5
             )
             return response.status_code == 200
-        except:
+        except requests.exceptions.RequestException:
             return False
     
     def get_available_models(self) -> list:

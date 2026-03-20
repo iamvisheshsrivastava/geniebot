@@ -75,23 +75,49 @@ class RAGQA:
         context = self.rag.get_rag_context(question, top_k=3)
         source_chunks = self.rag.get_source_chunks(question, top_k=3)
         
-        # Build prompt for LLM
+        # Build a strict prompt to avoid meta responses like
+        # "based on the given context" in final user-facing output.
         system_prompt = (
-            "You are a helpful AI assistant. "
-            "Answer questions based on the provided context. "
-            "Be concise and accurate. If you cannot find the answer in the context, say so."
+            "You are GenieBot, a concise assistant for document-grounded answers. "
+            "Use only the provided context. "
+            "Return only the direct answer for the user. "
+            "Do not mention prompts, context, documents, or your reasoning process. "
+            "If the answer is not in the provided context, reply exactly: "
+            "I could not find that in the loaded documents."
         )
-        
-        prompt = f"""Based on the following context, answer the question concisely.
 
+        prompt = f"""Context:
 {context}
 
 Question: {question}
 
-Answer:"""
+Instructions:
+- Answer in 2 to 4 short sentences.
+- Be specific and factual.
+- Do not add preambles or explanations about how you answered.
+
+Final Answer:"""
         
         # Generate answer using LLM
-        answer = self.llm.generate(prompt, system_prompt=system_prompt)
+        answer = self.llm.generate(
+            prompt,
+            system_prompt=system_prompt,
+            temperature=0.2,
+        )
+
+        # Do not cache or return failed model responses as normal answers.
+        if isinstance(answer, str) and answer.strip().lower().startswith("error:"):
+            logger.error(f"LLM generation failed for question '{question[:50]}...': {answer}")
+            return {
+                "answer": (
+                    "I could not generate an answer right now because the local LLM is unavailable. "
+                    "Please check Ollama/model status and try again."
+                ),
+                "sources": {},
+                "cached": False,
+                "error": True,
+                "details": answer,
+            }
         
         # Cache the result
         if use_cache and self.query_cache:

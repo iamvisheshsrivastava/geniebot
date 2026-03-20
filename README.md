@@ -215,38 +215,7 @@ Example:
 🏷️ Tags: dog, fetch, park
 ```
 
-#### Command 4: `/history`
-View your last 3 interactions.
-
-```
-📜 Your Conversation History (Last 3 interactions):
-
-1. [text] What is the return policy?...
-   Time: 2024-03-20T10:30:45.123456
-
-2. [image] [Image Upload]...
-   Time: 2024-03-20T11:00:32.654321
-```
-
-#### Command 5: `/status`
-Check system status and statistics.
-
-```
-📊 System Status:
-
-🧠 RAG System:
-   Chunks: 250
-   LLM Model: mistral
-   LLM Available: ✅
-   Cache Size: 12
-
-👁️ Vision System: ✅ Available
-```
-
-#### Command 6: `/clear_cache`
-Clear cached responses to free memory.
-
-#### Command 7: `/help`
+#### Command 4: `/help`
 Show detailed help and documentation.
 
 ---
@@ -357,7 +326,9 @@ TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
 
 # Optional
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=mistral
+OLLAMA_MODEL=gemma3:4b
+OLLAMA_MODEL_PRIORITY=mistral,phi3
+OLLAMA_FALLBACK_MODELS=tinyllama
 LOG_LEVEL=INFO
 ```
 
@@ -467,7 +438,7 @@ Solution:
 ### **Slow responses**
 ```
 Solution:
-1. Enable caching: /clear_cache then try /ask same question
+1. Repeat a previous /ask query to benefit from built-in query caching
 2. Use faster model: ollama pull neural-chat
 3. Reduce document size (remove unnecessary files from data/)
 4. Enable GPU acceleration

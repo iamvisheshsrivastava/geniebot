@@ -6,9 +6,6 @@ from .handlers import (
     ask_command,
     image_command,
     handle_image,
-    history_command,
-    status_command,
-    clear_cache_command,
     error_handler
 )
 
@@ -18,8 +15,5 @@ __all__ = [
     'ask_command',
     'image_command',
     'handle_image',
-    'history_command',
-    'status_command',
-    'clear_cache_command',
     'error_handler'
 ]

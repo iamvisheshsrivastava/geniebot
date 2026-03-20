@@ -3,8 +3,10 @@ GenieBot - RAG & Vision AI Assistant for Telegram
 Main application entry point
 """
 
+import asyncio
 import os
 from pathlib import Path
+from typing import Optional
 from dotenv import load_dotenv
 from telegram.ext import (
     Application,
@@ -22,9 +24,6 @@ from bot import (
     ask_command,
     image_command,
     handle_image,
-    history_command,
-    status_command,
-    clear_cache_command,
     error_handler
 )
 
@@ -38,6 +37,8 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama2")
+OLLAMA_MODEL_PRIORITY = os.getenv("OLLAMA_MODEL_PRIORITY", "")
+OLLAMA_FALLBACK_MODELS = os.getenv("OLLAMA_FALLBACK_MODELS", "tinyllama")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 DATA_DIR = Path("data")
 
@@ -47,6 +48,31 @@ if not TELEGRAM_BOT_TOKEN:
     raise ValueError("Please set TELEGRAM_BOT_TOKEN in .env file")
 
 logger.info("="*50)
+
+
+def _parse_model_list(raw_value: str) -> list[str]:
+    """Parse comma-separated model names from env values."""
+    return [m.strip() for m in raw_value.split(",") if m.strip()]
+
+
+def _resolve_available_model(preferred: str, available: list[str]) -> Optional[str]:
+    """Resolve preferred model to an installed Ollama tag if available."""
+    preferred = (preferred or "").strip()
+    if not preferred:
+        return None
+
+    preferred_lower = preferred.lower()
+    for model in available:
+        if model.lower() == preferred_lower:
+            return model
+
+    if ":" not in preferred:
+        prefix = f"{preferred_lower}:"
+        for model in available:
+            if model.lower().startswith(prefix):
+                return model
+
+    return None
 logger.info("GenieBot Starting")
 logger.info("="*50)
 
@@ -76,22 +102,46 @@ def initialize_systems() -> dict:
     else:
         logger.info(f"RAG system ready with {rag_system.get_stats()['total_chunks']} chunks")
     
-    # Initialize LLM (Using Gemma 3.4b)
-    logger.info(f"Initializing Ollama LLM (model: {OLLAMA_MODEL})...")
-    logger.info(f"Using Ollama model: {OLLAMA_MODEL}")
+    # Initialize LLM with priority and fallback model chain.
+    logger.info(f"Initializing Ollama LLM (preferred: {OLLAMA_MODEL})...")
     llm = OllamaLLM(
         base_url=OLLAMA_BASE_URL,
         model=OLLAMA_MODEL,
         timeout=120
     )
     
+    preferred_chain = [OLLAMA_MODEL] + _parse_model_list(OLLAMA_MODEL_PRIORITY)
+    fallback_chain = _parse_model_list(OLLAMA_FALLBACK_MODELS)
+
     if not llm.is_available():
         logger.warning("Ollama not available. Make sure Ollama is running.")
         logger.info("Start Ollama with: ollama serve")
         logger.info("Pull model with: ollama pull llama2")
+        llm.fallback_models = [m for m in fallback_chain if m and m != llm.model]
     else:
         models = llm.get_available_models()
         logger.info(f"Available Ollama models: {models}")
+
+        selected_model = OLLAMA_MODEL
+        for preferred in preferred_chain:
+            resolved = _resolve_available_model(preferred, models)
+            if resolved:
+                selected_model = resolved
+                break
+
+        resolved_fallbacks = []
+        for fallback in fallback_chain:
+            resolved = _resolve_available_model(fallback, models)
+            if resolved and resolved != selected_model and resolved not in resolved_fallbacks:
+                resolved_fallbacks.append(resolved)
+
+        llm.model = selected_model
+        llm.fallback_models = resolved_fallbacks
+        logger.info(f"Using Ollama model: {llm.model}")
+        if llm.fallback_models:
+            logger.info(f"Fallback models: {llm.fallback_models}")
+        else:
+            logger.info("Fallback models: none configured/available")
     
     # Initialize QA System
     logger.info("Initializing QA system...")
@@ -129,6 +179,7 @@ async def post_init(application: Application) -> None:
     Args:
         application: Telegram application instance
     """
+    await asyncio.sleep(0)
     logger.info("Bot is online and ready!")
     logger.info("Webhook/polling setup complete")
 
@@ -156,9 +207,6 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("ask", ask_command))
     application.add_handler(CommandHandler("image", image_command))
-    application.add_handler(CommandHandler("history", history_command))
-    application.add_handler(CommandHandler("status", status_command))
-    application.add_handler(CommandHandler("clear_cache", clear_cache_command))
     
     # Message handlers
     application.add_handler(MessageHandler(filters.PHOTO, handle_image))
