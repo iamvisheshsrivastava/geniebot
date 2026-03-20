@@ -2,7 +2,8 @@
 QA interface combining RAG system with LLM
 """
 
-from typing import Dict, List, Tuple
+import time
+from typing import Dict, Tuple
 from .system import RAGSystem
 from .llm import OllamaLLM
 from utils.logger import setup_logger
@@ -33,6 +34,27 @@ class RAGQA:
         self.query_cache = QueryCache() if use_cache else None
         
         logger.info("RAG QA system initialized")
+
+    @staticmethod
+    def _estimate_tokens(text: str) -> int:
+        """Rough token estimate for latency logging and prompt budgeting."""
+        return max(1, int(len(text) / 4))
+
+    @staticmethod
+    def _build_context_from_chunks(chunks: list[tuple[str, str]]) -> tuple[str, Dict[str, list[str]]]:
+        """Build context and source map from one retrieval call."""
+        if not chunks:
+            return "No relevant documents found in the knowledge base.", {}
+
+        lines = ["Relevant context from documents:", ""]
+        sources: Dict[str, list[str]] = {}
+        for i, (chunk_text, source) in enumerate(chunks, 1):
+            lines.append(f"[Source {i}: {source}]")
+            lines.append(chunk_text)
+            lines.append("")
+            sources.setdefault(source, []).append(chunk_text[:100] + "...")
+
+        return "\n".join(lines).strip(), sources
     
     def answer_question(
         self,
@@ -49,6 +71,7 @@ class RAGQA:
         Returns:
             Dictionary with answer, sources, and metadata
         """
+        overall_start = time.time()
         logger.info(f"Processing question: {question[:50]}...")
         
         # Check cache
@@ -71,12 +94,16 @@ class RAGQA:
                 "error": True
             }
         
-        # Retrieve relevant chunks
-        context = self.rag.get_rag_context(question, top_k=3)
-        source_chunks = self.rag.get_source_chunks(question, top_k=3)
+        # Retrieve relevant chunks once (avoid duplicate query embedding + scoring)
+        retrieval_start = time.time()
+        retrieved = self.rag.retrieve_chunks(question, top_k=3)
+        context, source_chunks = self._build_context_from_chunks(retrieved)
+        retrieval_time = time.time() - retrieval_start
+        logger.info(f"Retrieval time: {retrieval_time:.2f}s | top_k=3")
         
         # Build a strict prompt to avoid meta responses like
         # "based on the given context" in final user-facing output.
+        prompt_start = time.time()
         system_prompt = (
             "You are GenieBot, a concise assistant for document-grounded answers. "
             "Use only the provided context. "
@@ -92,21 +119,34 @@ class RAGQA:
 Question: {question}
 
 Instructions:
-- Answer in 2 to 4 short sentences.
-- Be specific and factual.
-- Do not add preambles or explanations about how you answered.
+    - Answer in 2 to 4 short sentences.
+    - Be specific and factual.
+    - Do not include prompt labels like "Question:" or "Instructions:" in the output.
+    - Do not add preambles or explanations about how you answered.
 
 Final Answer:"""
+        prompt_time = time.time() - prompt_start
+        prompt_chars = len(prompt) + len(system_prompt)
+        prompt_tokens_est = self._estimate_tokens(prompt) + self._estimate_tokens(system_prompt)
+        logger.info(f"Prompt construction time: {prompt_time:.2f}s")
+        logger.info(f"Prompt length: {prompt_chars} chars | est_tokens={prompt_tokens_est}")
         
         # Generate answer using LLM
+        llm_start = time.time()
         answer = self.llm.generate(
             prompt,
             system_prompt=system_prompt,
             temperature=0.2,
+            max_tokens=180,
         )
+        llm_time = time.time() - llm_start
+        logger.info(f"LLM response time: {llm_time:.2f}s")
 
         # Clean up answer - remove any preamble if LLM included it
         if isinstance(answer, str):
+            if "Final Answer:" in answer:
+                answer = answer.split("Final Answer:", 1)[-1].strip()
+
             # Remove common preambles the LLM might add
             for preamble in ["**Answer:**", "Answer:", "Final Answer:", "Based on the context:"]:
                 if answer.strip().lower().startswith(preamble.lower()):
@@ -132,6 +172,9 @@ Final Answer:"""
         if use_cache and self.query_cache:
             self.query_cache.put(question, answer)
         
+        total_time = time.time() - overall_start
+        logger.info(f"Total request time: {total_time:.2f}s")
+        logger.info(f"Answer length: {len(answer)} chars | est_tokens={self._estimate_tokens(answer)}")
         logger.info("Question answered successfully")
         
         return {

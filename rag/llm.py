@@ -4,6 +4,7 @@ Handles communication with local LLM inference
 """
 
 import requests
+import time
 from typing import Optional
 from utils.logger import setup_logger
 
@@ -114,31 +115,49 @@ class OllamaLLM:
 
         for index, model_name in enumerate(models_to_try):
             try:
+                fallback_triggered = model_name != self.model
+                payload = {
+                    "model": model_name,
+                    "prompt": full_prompt,
+                    "stream": False,
+                    "temperature": temperature,
+                }
+                if max_tokens is not None:
+                    payload["options"] = {"num_predict": int(max_tokens)}
+
+                llm_start = time.time()
                 response = requests.post(
                     f"{self.base_url}/api/generate",
-                    json={
-                        "model": model_name,
-                        "prompt": full_prompt,
-                        "stream": False,
-                        "temperature": temperature,
-                    },
+                    json=payload,
                     timeout=self.timeout,
                 )
 
                 if response.status_code == 200:
                     result = response.json()
                     generated_text = result.get("response", "").strip()
+                    llm_time = time.time() - llm_start
                     if model_name != self.model:
                         logger.warning(f"Switched active Ollama model to fallback: {model_name}")
                         self.model = model_name
+                    logger.info(f"LLM model used: {model_name}")
+                    logger.info(f"LLM fallback triggered: {fallback_triggered}")
+                    logger.info(f"LLM response time: {llm_time:.2f}s")
+                    logger.info(
+                        f"LLM payload sizes: prompt_chars={len(full_prompt)} response_chars={len(generated_text)}"
+                    )
                     logger.debug(f"Generated {len(generated_text)} characters")
                     return generated_text
 
                 error_detail = _extract_ollama_error(response)
+                llm_time = time.time() - llm_start
                 logger.error(
                     f"Ollama error ({model_name}): {response.status_code}"
                     + (f" - {error_detail}" if error_detail else "")
                 )
+                logger.info(f"LLM model used: {model_name}")
+                logger.info(f"LLM fallback triggered: {fallback_triggered}")
+                logger.info(f"LLM response time: {llm_time:.2f}s")
+                logger.info(f"LLM prompt size before failure: {len(full_prompt)} chars")
 
                 if error_detail:
                     last_error = f"Error: Ollama returned status {response.status_code}. {error_detail}"

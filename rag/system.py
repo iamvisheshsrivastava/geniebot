@@ -2,6 +2,7 @@
 
 import hashlib
 import sqlite3
+import time
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -174,10 +175,13 @@ class RAGSystem:
 
     def _load_from_db(self) -> int:
         """Load chunks and embeddings from SQLite into memory."""
+        db_query_start = time.time()
         with sqlite3.connect(self.db_path) as conn:
             rows = conn.execute(
                 "SELECT source, chunk_text, embedding, embedding_dim FROM chunks ORDER BY id"
             ).fetchall()
+        db_query_time = time.time() - db_query_start
+        logger.info(f"SQLite query time: {db_query_time:.2f}s | rows={len(rows)}")
 
         chunks: List[str] = []
         sources: List[str] = []
@@ -226,20 +230,43 @@ class RAGSystem:
             logger.warning("No documents loaded. Cannot retrieve chunks.")
             return []
 
+        total_start = time.time()
         logger.debug(f"Retrieving chunks for query: {query[:50]}...")
-        query_vec = self.embedding_model.encode(query, convert_to_numpy=True).astype("float32")
+
+        embed_start = time.time()
+        cached_query_vec = self.embedding_cache.get(query)
+        if cached_query_vec is not None:
+            query_vec = cached_query_vec.astype("float32")
+        else:
+            query_vec = self.embedding_model.encode(query, convert_to_numpy=True).astype("float32")
+            self.embedding_cache.put(query, query_vec)
         query_norm = max(float(np.linalg.norm(query_vec)), 1e-12)
         query_vec = query_vec / query_norm
+        embedding_time = time.time() - embed_start
+        logger.info(f"Embedding time: {embedding_time:.2f}s")
 
+        retrieval_start = time.time()
         scores = self.normalized_embeddings @ query_vec
         k = min(top_k, len(self.chunks))
-        top_indices = np.argsort(scores)[-k:][::-1]
+        if k <= 0:
+            return []
+
+        if k < len(scores):
+            top_indices = np.argpartition(scores, -k)[-k:]
+            top_indices = top_indices[np.argsort(scores[top_indices])[::-1]]
+        else:
+            top_indices = np.argsort(scores)[::-1]
+        retrieval_time = time.time() - retrieval_start
 
         results: List[Tuple[str, str]] = []
         for idx in top_indices:
             results.append((self.chunks[int(idx)], self.chunk_sources[int(idx)]))
 
         logger.debug(f"Retrieved {len(results)} chunks")
+        total_time = time.time() - total_start
+        logger.info(f"SQLite query time: 0.00s | mode=in_memory_vector_search")
+        logger.info(f"Retrieval time: {retrieval_time:.2f}s | top_k={k} | retrieved={len(results)}")
+        logger.info(f"Total request time (retrieval stage): {total_time:.2f}s")
         return results
 
     def get_rag_context(self, query: str, top_k: int = 3) -> str:
