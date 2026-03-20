@@ -143,29 +143,29 @@ Source: `docs/diagrams/system-design.mmd`
 ```mermaid
 flowchart TD
     U[Telegram User] --> TG[Telegram API]
-    TG --> APP[app.py\nBot Runtime]
-    WEB[Browser/Render Ping] --> STATUS["Status endpoints: / and /health"]
+    TG --> APP["app.py - Bot Runtime"]
+    WEB[Browser Render Ping] --> STATUS["Status endpoints: / and /health"]
     STATUS --> APP
 
-    APP --> H[bot/handlers.py\nCommand Handlers]
-    H --> MEM[utils/memory.py\nLast 3 interactions per user]
-    H --> QA[rag/qa.py\nRAG QA Orchestrator]
-    H --> VISION[vision/processor.py\nBLIP Caption + Tags]
+    APP --> H["bot/handlers.py - Command Handlers"]
+    H --> MEM["utils/memory.py - Last 3 interactions per user"]
+    H --> QA["rag/qa.py - RAG QA Orchestrator"]
+    H --> VISION["vision/processor.py - BLIP Caption + Tags"]
 
-    QA --> RAG[rag/system.py\nRAG Retrieval]
-    QA --> LLM[rag/llm.py\nOllama LLM + Fallback]
-    QA --> QCACHE[utils/cache.py\nQueryCache (RAM only)]
+    QA --> RAG["rag/system.py - RAG Retrieval"]
+    QA --> LLM["rag/llm.py - Ollama LLM + Fallback"]
+    QA --> QCACHE["utils/cache.py - QueryCache (RAM only)"]
 
-    RAG --> DOCS[data/*.md, data/*.txt\nKnowledge Documents]
-    RAG --> ECACHE[utils/cache.py\nEmbeddingCache (RAM only)]
-    RAG --> ST[sentence-transformers\nall-MiniLM-L6-v2]
-    RAG --> SQLITE[(SQLite DB\ndata/rag_embeddings.db)]
+    RAG --> DOCS["Knowledge Documents (md txt files)"]
+    RAG --> ECACHE["utils/cache.py - EmbeddingCache (RAM only)"]
+    RAG --> ST["sentence transformers model all MiniLM L6 v2"]
+    RAG --> SQLITE["SQLite DB - data/rag_embeddings.db"]
 
-    BLD[scripts/build_vector_db.py\nOne-time / manual DB build] --> SQLITE
-    VISION --> BLIP[Salesforce BLIP\nImage Caption Model]
+    BLD["scripts/build_vector_db.py - One-time or manual DB build"] --> SQLITE
+    VISION --> BLIP["Salesforce BLIP - Image Caption Model"]
 
-    APP --> LOGS[(logs/geniebot_YYYYMMDD.log)]
-    APP --> ENV[.env configuration]
+    APP --> LOGS["logs/geniebot YYYYMMDD.log"]
+    APP --> ENV[".env configuration"]
 ```
 
 ## Storage and Caching
