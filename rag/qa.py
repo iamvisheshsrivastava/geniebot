@@ -96,10 +96,10 @@ class RAGQA:
         
         # Retrieve relevant chunks once (avoid duplicate query embedding + scoring)
         retrieval_start = time.time()
-        retrieved = self.rag.retrieve_chunks(question, top_k=3)
+        retrieved = self.rag.retrieve_chunks(question, top_k=2)
         context, source_chunks = self._build_context_from_chunks(retrieved)
         retrieval_time = time.time() - retrieval_start
-        logger.info(f"Retrieval time: {retrieval_time:.2f}s | top_k=3")
+        logger.info(f"Retrieval time: {retrieval_time:.2f}s | top_k=2")
         
         # Build a strict prompt to avoid meta responses like
         # "based on the given context" in final user-facing output.
@@ -137,7 +137,7 @@ Final Answer:"""
             prompt,
             system_prompt=system_prompt,
             temperature=0.2,
-            max_tokens=180,
+            max_tokens=250,
         )
         llm_time = time.time() - llm_start
         logger.info(f"LLM response time: {llm_time:.2f}s")

@@ -209,7 +209,7 @@ def initialize_systems() -> dict:
     logger.info("Initializing RAG system...")
     rag_system = RAGSystem(
         model_name="sentence-transformers/all-MiniLM-L6-v2",
-        chunk_size=300,
+        chunk_size=200,
         chunk_overlap=50
     )
     
