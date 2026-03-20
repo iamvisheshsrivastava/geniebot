@@ -123,6 +123,13 @@ python app.py
 ### Ask
 ![Ask](media/ask.png)
 
+These are example `/ask` queries that fetch information from your loaded documents and then answer:
+- `/ask What is the return policy?`
+- `/ask What are the pricing plans and included features?`
+- `/ask What are the support hours and escalation process?`
+- `/ask How do I reset my account password?`
+- `/ask What are the main security/compliance points?`
+
 ### Image
 ![Image](media/image.png)
 
@@ -137,7 +144,7 @@ Source: `docs/diagrams/system-design.mmd`
 flowchart TD
     U[Telegram User] --> TG[Telegram API]
     TG --> APP[app.py\nBot Runtime]
-    WEB[Browser/Render Ping] --> STATUS[/ and /health status server]
+    WEB[Browser/Render Ping] --> STATUS["Status endpoints: / and /health"]
     STATUS --> APP
 
     APP --> H[bot/handlers.py\nCommand Handlers]

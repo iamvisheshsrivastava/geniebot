@@ -1,7 +1,7 @@
 flowchart TD
     U[Telegram User] --> TG[Telegram API]
     TG --> APP[app.py\nBot Runtime]
-    WEB[Browser/Render Ping] --> STATUS[/ and /health status server]
+    WEB[Browser/Render Ping] --> STATUS["Status endpoints: / and /health"]
     STATUS --> APP
 
     APP --> H[bot/handlers.py\nCommand Handlers]
