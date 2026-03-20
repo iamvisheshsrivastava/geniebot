@@ -7,6 +7,13 @@ GenieBot is a local-first Telegram assistant that supports:
 
 It uses Ollama for generation, SentenceTransformers for embeddings, BLIP for vision, and SQLite for persistent vector storage.
 
+## Quick Access
+
+- Telegram bot: [@mygenie_ai_bot](https://t.me/mygenie_ai_bot)
+- Service check: http://68.183.85.47:8080/ to confirm whether the bot service is running
+- You do not need to run the full setup locally if the service is already up; you can use the bot directly on Telegram
+- The models are open source, so feel free to use and test the bot as much as you want
+
 ## Highlights
 
 - RAG retrieval with persistent embeddings in SQLite
