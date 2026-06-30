@@ -1,4 +1,4 @@
-# GenieBot - RAG + Vision Telegram Assistant
+# GenieBot - RAG + Vision Telegram Assistant  
 
 GenieBot is a local-first Telegram assistant that supports:
 - document-grounded Q&A with RAG
