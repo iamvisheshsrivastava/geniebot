@@ -1,6 +1,6 @@
 """
-LLM interface for GenieBot using Ollama
-Handles communication with local LLM inference
+LLM interfaces for GenieBot: local Ollama, and OpenRouter's hosted free-tier
+models (used when no local Ollama server is available, e.g. in the cloud).
 """
 
 import requests
@@ -9,6 +9,120 @@ from typing import Optional
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
+
+
+class OpenRouterLLM:
+    """Interface to OpenRouter's hosted chat-completions API.
+
+    Implements the same public surface as OllamaLLM (generate/chat/
+    is_available/get_available_models) so it's a drop-in replacement
+    wherever an LLM instance is used.
+    """
+
+    API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "nvidia/nemotron-nano-9b-v2:free",
+        fallback_models: Optional[list[str]] = None,
+        timeout: int = 60,
+        site_url: str = "https://github.com/iamvisheshsrivastava/geniebot",
+    ):
+        self.api_key = api_key
+        self.model = model
+        self.fallback_models = [m for m in (fallback_models or []) if m and m != model]
+        self.timeout = timeout
+        self.site_url = site_url
+
+    def _headers(self) -> dict:
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "HTTP-Referer": self.site_url,
+            "Content-Type": "application/json",
+        }
+
+    def _complete(self, messages: list, model_name: str, temperature: float, max_tokens: Optional[int]) -> requests.Response:
+        payload = {
+            "model": model_name,
+            "messages": messages,
+            "temperature": temperature,
+        }
+        if max_tokens is not None:
+            payload["max_tokens"] = int(max_tokens)
+        return requests.post(self.API_URL, headers=self._headers(), json=payload, timeout=self.timeout)
+
+    def generate(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+    ) -> str:
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        models_to_try = [self.model] + [m for m in self.fallback_models if m != self.model]
+        last_error = "Error: Failed to generate response"
+
+        for index, model_name in enumerate(models_to_try):
+            try:
+                llm_start = time.time()
+                response = self._complete(messages, model_name, temperature, max_tokens)
+                llm_time = time.time() - llm_start
+
+                if response.status_code == 200:
+                    result = response.json()
+                    generated_text = result["choices"][0]["message"]["content"].strip()
+                    if model_name != self.model:
+                        logger.warning(f"Switched active OpenRouter model to fallback: {model_name}")
+                        self.model = model_name
+                    logger.info(f"LLM model used: {model_name}")
+                    logger.info(f"LLM response time: {llm_time:.2f}s")
+                    return generated_text
+
+                logger.error(f"OpenRouter error ({model_name}): {response.status_code} - {response.text[:300]}")
+                last_error = f"Error: OpenRouter returned status {response.status_code}"
+
+                has_next_model = index < len(models_to_try) - 1
+                if has_next_model:
+                    logger.warning(f"Trying fallback model after failure on {model_name}")
+                    continue
+                return last_error
+
+            except requests.exceptions.Timeout:
+                logger.error(f"OpenRouter request timed out ({model_name})")
+                last_error = "Error: Request timed out. Please try again."
+                has_next_model = index < len(models_to_try) - 1
+                if has_next_model:
+                    continue
+                return last_error
+
+            except requests.exceptions.RequestException as e:
+                logger.error(f"OpenRouter request failed ({model_name}): {e}")
+                return "Error: Failed to connect to OpenRouter."
+
+        return last_error
+
+    def chat(self, messages: list, temperature: float = 0.7) -> str:
+        try:
+            response = self._complete(messages, self.model, temperature, None)
+            if response.status_code == 200:
+                result = response.json()
+                return result["choices"][0]["message"]["content"].strip()
+            logger.error(f"OpenRouter chat error: {response.status_code} - {response.text[:300]}")
+            return f"Error: OpenRouter returned status {response.status_code}"
+        except requests.exceptions.RequestException as e:
+            logger.error(f"OpenRouter chat request failed: {e}")
+            return "Error: Failed to communicate with OpenRouter"
+
+    def is_available(self) -> bool:
+        return bool(self.api_key)
+
+    def get_available_models(self) -> list:
+        return [self.model] + self.fallback_models
 
 
 def _extract_ollama_error(response: requests.Response) -> str:

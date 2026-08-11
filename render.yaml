@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: geniebot
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    autoDeployTrigger: commit
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: LLM_PROVIDER
+        value: openrouter
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: nvidia/nemotron-nano-9b-v2:free
+      - key: OPENROUTER_VISION_MODEL
+        value: google/gemma-4-31b-it:free
+      - key: LOG_LEVEL
+        value: INFO

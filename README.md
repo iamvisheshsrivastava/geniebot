@@ -1,24 +1,23 @@
 # GenieBot - RAG + Vision Telegram Assistant  
 
-GenieBot is a local-first Telegram assistant that supports:
+GenieBot is a Telegram assistant that supports:
 - document-grounded Q&A with RAG
 - image captioning with tags
 - quick summary of the latest chat or image interaction
 
-It uses Ollama for generation, SentenceTransformers for embeddings, BLIP for vision, and SQLite for persistent vector storage.
+It uses OpenRouter free-tier models for generation and vision, fastembed for embeddings, and SQLite for persistent vector storage. No local model server or GPU required — it runs comfortably on a free-tier host.
 
 ## Quick Access
 
 - Telegram bot: [@mygenie_ai_bot](https://t.me/mygenie_ai_bot)
-- Service check: http://68.183.85.47:8080/ to confirm whether the bot service is running
-- You do not need to run the full setup locally if the service is already up; you can use the bot directly on Telegram
-- The models are open source, so feel free to use and test the bot as much as you want
+- Service check: `<your-render-url>/health` to confirm whether the bot service is running
+- The previous DigitalOcean droplet deployment has been retired; see **Deploy (free tier)** below for the current hosting setup
 
 ## Highlights
 
 - RAG retrieval with persistent embeddings in SQLite
 - Query and embedding caches in RAM for fast repeated calls
-- Vision pipeline for image caption + tags
+- Vision pipeline for image caption + tags (via a hosted vision model, no local weights)
 - User memory that keeps the last 3 interactions per user
 - Health/status page at `/` and `/health`
 
@@ -26,9 +25,8 @@ It uses Ollama for generation, SentenceTransformers for embeddings, BLIP for vis
 
 - Python 3.10+
 - python-telegram-bot
-- Ollama (local LLM runtime)
-- sentence-transformers/all-MiniLM-L6-v2 (embeddings)
-- Salesforce/blip-image-captioning-base (vision)
+- OpenRouter (hosted LLM + vision, free-tier models) — or Ollama for local dev
+- fastembed / sentence-transformers/all-MiniLM-L6-v2 (embeddings, ONNX-based, no torch)
 - SQLite (`data/rag_embeddings.db`)
 
 ## Current Runtime Settings
@@ -45,8 +43,9 @@ app.py                    # Bot bootstrap + status server
 bot/handlers.py           # Telegram command handlers
 rag/system.py             # Chunking, embedding, retrieval, SQLite persistence
 rag/qa.py                 # QA orchestration and prompt flow
-rag/llm.py                # Ollama client + model fallback handling
-vision/processor.py       # Image captioning and tag extraction
+rag/llm.py                # OpenRouter + Ollama clients with model fallback handling
+rag/embeddings.py         # fastembed wrapper (no torch dependency)
+vision/processor.py       # Image captioning via a hosted OpenRouter vision model
 utils/cache.py            # QueryCache + EmbeddingCache (RAM)
 utils/memory.py           # Per-user short history (RAM)
 utils/logger.py           # File + console logging
@@ -55,7 +54,7 @@ media/                    # Assignment screenshots used below
 docs/diagrams/system-design.mmd
 ```
 
-## Setup and Run
+## Setup and Run (local)
 
 ### 1) Create and activate virtual environment
 
@@ -79,40 +78,44 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3) Start Ollama and pull models
+### 3) Configure environment
 
-```bash
-ollama serve
-ollama pull gemma3:4b
-ollama pull mistral
-ollama pull tinyllama
-```
-
-### 4) Configure environment
-
-Create `.env` from `.env.example` and set:
+Create `.env` from `.env.example`. By default `LLM_PROVIDER=openrouter`, which needs no local model server:
 
 ```env
 TELEGRAM_BOT_TOKEN=your_token_here
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=gemma3:4b
-OLLAMA_MODEL_PRIORITY=mistral,phi3
-OLLAMA_FALLBACK_MODELS=tinyllama
+LLM_PROVIDER=openrouter
+OPENROUTER_API_KEY=your_openrouter_api_key
+OPENROUTER_MODEL=nvidia/nemotron-nano-9b-v2:free
+OPENROUTER_VISION_MODEL=google/gemma-4-31b-it:free
 LOG_LEVEL=INFO
 PORT=8080
 ```
 
-### 5) Optional: prebuild the embedding DB
+To use a local Ollama server instead, set `LLM_PROVIDER=ollama` and configure `OLLAMA_BASE_URL` / `OLLAMA_MODEL` (see `.env.example`); note the vision pipeline always calls OpenRouter regardless of `LLM_PROVIDER`.
+
+### 4) Optional: prebuild the embedding DB
 
 ```bash
 python scripts/build_vector_db.py --data-dir data --db-path data/rag_embeddings.db --chunk-size 200 --chunk-overlap 50
 ```
 
-### 6) Run the bot
+### 5) Run the bot
 
 ```bash
 python app.py
 ```
+
+## Deploy (free tier)
+
+This repo includes a `Dockerfile` and `render.yaml` for a one-click Render deployment:
+
+1. On [Render](https://render.com), choose **New > Blueprint** and point it at this repo (`render.yaml` will be picked up automatically).
+2. Set the required secrets in the Render dashboard: `TELEGRAM_BOT_TOKEN` and `OPENROUTER_API_KEY`.
+3. Deploy. Render auto-redeploys on every push to `main` (`autoDeployTrigger: commit`).
+4. Confirm it's running via `<your-render-url>/health`.
+
+The bot itself doesn't need inbound HTTP (it long-polls Telegram), the status server just satisfies Render's free-tier requirement that the service bind to `$PORT`.
 
 ## Bot Commands
 
@@ -151,25 +154,26 @@ Source: `docs/diagrams/system-design.mmd`
 flowchart TD
     U[Telegram User] --> TG[Telegram API]
     TG --> APP["app.py - Bot Runtime"]
-    WEB[Browser Render Ping] --> STATUS["Status endpoints: / and /health"]
+    WEB[Browser / Render Ping] --> STATUS["Status endpoints: / and /health"]
     STATUS --> APP
 
     APP --> H["bot/handlers.py - Command Handlers"]
     H --> MEM["utils/memory.py - Last 3 interactions per user"]
     H --> QA["rag/qa.py - RAG QA Orchestrator"]
-    H --> VISION["vision/processor.py - BLIP Caption + Tags"]
+    H --> VISION["vision/processor.py - Vision Caption + Tags"]
 
     QA --> RAG["rag/system.py - RAG Retrieval"]
-    QA --> LLM["rag/llm.py - Ollama LLM + Fallback"]
+    QA --> LLM["rag/llm.py - OpenRouter/Ollama LLM + Fallback"]
     QA --> QCACHE["utils/cache.py - QueryCache (RAM only)"]
 
     RAG --> DOCS["Knowledge Documents (md txt files)"]
     RAG --> ECACHE["utils/cache.py - EmbeddingCache (RAM only)"]
-    RAG --> ST["sentence transformers model all MiniLM L6 v2"]
+    RAG --> ST["rag/embeddings.py - fastembed all-MiniLM-L6-v2"]
     RAG --> SQLITE["SQLite DB - data/rag_embeddings.db"]
 
     BLD["scripts/build_vector_db.py - One-time or manual DB build"] --> SQLITE
-    VISION --> BLIP["Salesforce BLIP - Image Caption Model"]
+    VISION --> ORV["OpenRouter Vision Model (hosted, free tier)"]
+    LLM --> OR["OpenRouter Chat Model (hosted, free tier)"]
 
     APP --> LOGS["logs/geniebot YYYYMMDD.log"]
     APP --> ENV[".env configuration"]
@@ -183,6 +187,5 @@ flowchart TD
 
 ## Assignment Notes
 
-- This project runs without Docker.
 - RAG is optimized for concise answers with grounded context.
 - Repeated same questions are served from in-memory query cache when available.

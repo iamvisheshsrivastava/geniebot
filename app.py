@@ -17,7 +17,7 @@ from telegram.ext import (
     filters
 )
 
-from rag import RAGSystem, OllamaLLM, RAGQA
+from rag import RAGSystem, OllamaLLM, OpenRouterLLM, RAGQA
 from vision import ImageProcessor
 from utils import UserMemory, setup_logger
 from bot import (
@@ -38,10 +38,21 @@ load_dotenv()
 
 # Configuration
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+# LLM_PROVIDER=openrouter (default, no local server needed - works on free
+# cloud hosting) or LLM_PROVIDER=ollama (local dev with a running Ollama server)
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openrouter").strip().lower()
+
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama2")
 OLLAMA_MODEL_PRIORITY = os.getenv("OLLAMA_MODEL_PRIORITY", "")
 OLLAMA_FALLBACK_MODELS = os.getenv("OLLAMA_FALLBACK_MODELS", "tinyllama")
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-nano-9b-v2:free")
+OPENROUTER_FALLBACK_MODELS = os.getenv("OPENROUTER_FALLBACK_MODELS", "")
+OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "google/gemma-4-31b-it:free")
+
 STATUS_HOST = os.getenv("STATUS_HOST", "0.0.0.0")
 STATUS_PORT = int(os.getenv("PORT", os.getenv("STATUS_PORT", "8080")))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -51,6 +62,10 @@ DATA_DIR = Path("data")
 if not TELEGRAM_BOT_TOKEN:
     logger.error("TELEGRAM_BOT_TOKEN not set in environment variables")
     raise ValueError("Please set TELEGRAM_BOT_TOKEN in .env file")
+
+if LLM_PROVIDER == "openrouter" and not OPENROUTER_API_KEY:
+    logger.error("LLM_PROVIDER=openrouter but OPENROUTER_API_KEY is not set")
+    raise ValueError("Please set OPENROUTER_API_KEY in .env file")
 
 logger.info("="*50)
 
@@ -221,55 +236,69 @@ def initialize_systems() -> dict:
     else:
         logger.info(f"RAG system ready with {rag_system.get_stats()['total_chunks']} chunks")
     
-    # Initialize LLM with priority and fallback model chain.
-    logger.info(f"Initializing Ollama LLM (preferred: {OLLAMA_MODEL})...")
-    llm = OllamaLLM(
-        base_url=OLLAMA_BASE_URL,
-        model=OLLAMA_MODEL,
-        timeout=120
-    )
-    
-    preferred_chain = [OLLAMA_MODEL] + _parse_model_list(OLLAMA_MODEL_PRIORITY)
-    fallback_chain = _parse_model_list(OLLAMA_FALLBACK_MODELS)
+    # Initialize LLM (OpenRouter by default - no local server needed; set
+    # LLM_PROVIDER=ollama for local dev against a running Ollama server).
+    if LLM_PROVIDER == "ollama":
+        logger.info(f"Initializing Ollama LLM (preferred: {OLLAMA_MODEL})...")
+        llm = OllamaLLM(
+            base_url=OLLAMA_BASE_URL,
+            model=OLLAMA_MODEL,
+            timeout=120
+        )
 
-    if not llm.is_available():
-        logger.warning("Ollama not available. Make sure Ollama is running.")
-        logger.info("Start Ollama with: ollama serve")
-        logger.info("Pull model with: ollama pull llama2")
-        llm.fallback_models = [m for m in fallback_chain if m and m != llm.model]
+        preferred_chain = [OLLAMA_MODEL] + _parse_model_list(OLLAMA_MODEL_PRIORITY)
+        fallback_chain = _parse_model_list(OLLAMA_FALLBACK_MODELS)
+
+        if not llm.is_available():
+            logger.warning("Ollama not available. Make sure Ollama is running.")
+            logger.info("Start Ollama with: ollama serve")
+            logger.info("Pull model with: ollama pull llama2")
+            llm.fallback_models = [m for m in fallback_chain if m and m != llm.model]
+        else:
+            models = llm.get_available_models()
+            logger.info(f"Available Ollama models: {models}")
+
+            selected_model = OLLAMA_MODEL
+            for preferred in preferred_chain:
+                resolved = _resolve_available_model(preferred, models)
+                if resolved:
+                    selected_model = resolved
+                    break
+
+            resolved_fallbacks = []
+            for fallback in fallback_chain:
+                resolved = _resolve_available_model(fallback, models)
+                if resolved and resolved != selected_model and resolved not in resolved_fallbacks:
+                    resolved_fallbacks.append(resolved)
+
+            llm.model = selected_model
+            llm.fallback_models = resolved_fallbacks
+            logger.info(f"Using Ollama model: {llm.model}")
+            if llm.fallback_models:
+                logger.info(f"Fallback models: {llm.fallback_models}")
+            else:
+                logger.info("Fallback models: none configured/available")
     else:
-        models = llm.get_available_models()
-        logger.info(f"Available Ollama models: {models}")
-
-        selected_model = OLLAMA_MODEL
-        for preferred in preferred_chain:
-            resolved = _resolve_available_model(preferred, models)
-            if resolved:
-                selected_model = resolved
-                break
-
-        resolved_fallbacks = []
-        for fallback in fallback_chain:
-            resolved = _resolve_available_model(fallback, models)
-            if resolved and resolved != selected_model and resolved not in resolved_fallbacks:
-                resolved_fallbacks.append(resolved)
-
-        llm.model = selected_model
-        llm.fallback_models = resolved_fallbacks
-        logger.info(f"Using Ollama model: {llm.model}")
+        logger.info(f"Initializing OpenRouter LLM (model: {OPENROUTER_MODEL})...")
+        llm = OpenRouterLLM(
+            api_key=OPENROUTER_API_KEY,
+            model=OPENROUTER_MODEL,
+            fallback_models=_parse_model_list(OPENROUTER_FALLBACK_MODELS),
+            timeout=60,
+        )
+        logger.info(f"Using OpenRouter model: {llm.model}")
         if llm.fallback_models:
             logger.info(f"Fallback models: {llm.fallback_models}")
-        else:
-            logger.info("Fallback models: none configured/available")
-    
+
     # Initialize QA System
     logger.info("Initializing QA system...")
     qa_system = RAGQA(rag_system, llm, use_cache=True)
-    
+
     # Initialize Vision System
     logger.info("Initializing vision system...")
     vision_processor = ImageProcessor(
-        model_name="Salesforce/blip-image-captioning-base"
+        api_key=OPENROUTER_API_KEY,
+        model=OPENROUTER_VISION_MODEL,
     )
     
     if not vision_processor.is_available():

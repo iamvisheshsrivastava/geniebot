@@ -1,9 +1,6 @@
 python-telegram-bot==20.7
-sentence-transformers==2.3.0
+fastembed==0.3.6
 Pillow==10.1.0
 numpy>=1.26.0,<2.0
-torch>=2.2.0
-transformers>=4.35.2
 requests==2.31.0
 python-dotenv==1.0.0
-ollama>=0.1.0

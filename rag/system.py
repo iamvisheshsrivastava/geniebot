@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
+from rag.embeddings import FastEmbedModel
 from utils.cache import EmbeddingCache
 from utils.logger import setup_logger
 
@@ -31,7 +31,7 @@ class RAGSystem:
         self.db_path = Path(db_path)
 
         logger.info(f"Loading embedding model: {model_name}")
-        self.embedding_model = SentenceTransformer(model_name)
+        self.embedding_model = FastEmbedModel(model_name)
         self.embedding_cache = EmbeddingCache()
 
         self.chunks: List[str] = []
