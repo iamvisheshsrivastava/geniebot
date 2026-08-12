@@ -9,9 +9,9 @@ It uses OpenRouter free-tier models for generation and vision, fastembed for emb
 
 ## Quick Access
 
-- Telegram bot: [@mygenie_ai_bot](https://t.me/mygenie_ai_bot)
-- Service check: `<your-render-url>/health` to confirm whether the bot service is running
-- The previous DigitalOcean droplet deployment has been retired; see **Deploy (free tier)** below for the current hosting setup
+- Telegram bot: [@Hello_Genie_Bot](https://t.me/Hello_Genie_Bot)
+- Service check: [https://geniebot-s98h.onrender.com/health](https://geniebot-s98h.onrender.com/health) to confirm whether the bot service is running
+- Hosted on Render's free tier (see **Deploy (free tier)** below); the previous DigitalOcean droplet deployment has been retired
 
 ## Highlights
 
