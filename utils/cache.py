@@ -4,11 +4,50 @@ Caches embeddings and query results to avoid recomputation
 """
 
 import hashlib
+import time
 from typing import Optional, List, Dict, Any
 import numpy as np
 from .logger import setup_logger
 
 logger = setup_logger(__name__)
+
+
+class RateLimiter:
+    """Simple per-user fixed-window rate limiter (in-memory, single process).
+
+    GenieBot is a public bot with a shared OpenRouter key - without this,
+    one user spamming /ask or image uploads can exhaust the free-tier quota
+    for everyone. Not distributed-safe, but the bot only ever runs as one
+    process on Render's free tier, so that's not a concern here.
+    """
+
+    def __init__(self, limit: int = 10, window_seconds: int = 60):
+        self.limit = limit
+        self.window_seconds = window_seconds
+        # user_id -> (window_expires_at, count_in_window)
+        self._counters: Dict[int, tuple] = {}
+
+    def allow(self, user_id: int) -> bool:
+        """Return True if this request is allowed, False if the user is over their limit."""
+        now = time.time()
+        expires_at, count = self._counters.get(user_id, (now + self.window_seconds, 0))
+
+        if expires_at < now:
+            expires_at = now + self.window_seconds
+            count = 0
+
+        count += 1
+        self._counters[user_id] = (expires_at, count)
+
+        allowed = count <= self.limit
+        if not allowed:
+            logger.warning(f"Rate limit exceeded for user {user_id} ({count}/{self.limit} in window)")
+        return allowed
+
+    def seconds_until_reset(self, user_id: int) -> int:
+        """Seconds remaining until this user's window resets."""
+        expires_at, _ = self._counters.get(user_id, (0, 0))
+        return max(0, int(expires_at - time.time()))
 
 
 class EmbeddingCache:

@@ -74,6 +74,23 @@ def _format_sources(sources: dict) -> str:
     return "\n".join(lines)
 
 
+async def _check_rate_limit(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> bool:
+    """Return True if the request should proceed, False if it was rate-limited
+    (and a reply has already been sent explaining that)."""
+    rate_limiter = context.bot_data.get("rate_limiter")
+    if not rate_limiter:
+        return True
+    if rate_limiter.allow(user_id):
+        return True
+    wait_s = rate_limiter.seconds_until_reset(user_id)
+    await _safe_reply_text(
+        update.message,
+        f"⏳ You're sending requests too fast. Please wait {wait_s}s and try again.",
+        markdown=False,
+    )
+    return False
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /start command."""
     user = update.effective_user
@@ -85,6 +102,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "• /ask <query> - Ask questions from local documents\n"
         "• /image - Upload an image for caption + tags\n"
         "• /summarize [chat|image] - Summarize your recent interaction\n"
+        "• /clear - Clear your saved conversation history\n"
         "• /help - Show usage instructions\n\n"
         "GenieBot keeps your last 3 interactions for better continuity."
     )
@@ -105,10 +123,26 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "GenieBot returns one caption and three tags.\n\n"
         "*3. /summarize [chat|image]*\n"
         "Summarize your latest chat or latest image result.\n\n"
-        "*4. /start*\n"
+        "*4. /clear*\n"
+        "Clear your saved conversation history.\n\n"
+        "*5. /start*\n"
         "Shows the quick command summary."
     )
     await _safe_reply_text(update.message, help_text, markdown=True)
+
+
+async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /clear command to reset the user's saved interaction history."""
+    user_id = update.effective_user.id
+    logger.info(f"User {user_id} used /clear command")
+
+    user_memory = context.bot_data.get("user_memory")
+    if not user_memory:
+        await _safe_reply_text(update.message, "❌ Memory system not initialized", markdown=False)
+        return
+
+    user_memory.clear_history(user_id)
+    await _safe_reply_text(update.message, "🗑️ Your conversation history has been cleared.", markdown=False)
 
 
 async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -193,6 +227,9 @@ async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         return
 
+    if not await _check_rate_limit(update, context, user_id):
+        return
+
     question = " ".join(context.args)
     await _safe_reply_text(
         update.message,
@@ -250,6 +287,9 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     logger.info(f"User {user_id} uploaded an image")
 
     if not update.message.photo:
+        return
+
+    if not await _check_rate_limit(update, context, user_id):
         return
 
     vision_processor = context.bot_data.get("vision_processor")

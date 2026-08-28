@@ -7,6 +7,7 @@ from .handlers import (
     summarize_command,
     image_command,
     handle_image,
+    clear_command,
     error_handler
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     'summarize_command',
     'image_command',
     'handle_image',
+    'clear_command',
     'error_handler'
 ]

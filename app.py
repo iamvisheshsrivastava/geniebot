@@ -19,7 +19,7 @@ from telegram.ext import (
 
 from rag import RAGSystem, OllamaLLM, OpenRouterLLM, RAGQA
 from vision import ImageProcessor
-from utils import UserMemory, setup_logger
+from utils import UserMemory, RateLimiter, setup_logger
 from bot import (
     start,
     help_command,
@@ -27,6 +27,7 @@ from bot import (
     summarize_command,
     image_command,
     handle_image,
+    clear_command,
     error_handler
 )
 
@@ -308,15 +309,20 @@ def initialize_systems() -> dict:
     
     # Initialize Memory
     user_memory = UserMemory(max_history=3)
-    
+
+    # Per-user rate limit on LLM/vision-backed commands - shared OpenRouter
+    # key, so this bounds how much of it any single user can burn through.
+    rate_limiter = RateLimiter(limit=10, window_seconds=60)
+
     logger.info("All systems initialized successfully!")
-    
+
     return {
         "rag_system": rag_system,
         "llm": llm,
         "qa_system": qa_system,
         "vision_processor": vision_processor,
-        "user_memory": user_memory
+        "user_memory": user_memory,
+        "rate_limiter": rate_limiter
     }
 
 
@@ -359,6 +365,7 @@ def main() -> None:
     application.add_handler(CommandHandler("ask", ask_command))
     application.add_handler(CommandHandler("summarize", summarize_command))
     application.add_handler(CommandHandler("image", image_command))
+    application.add_handler(CommandHandler("clear", clear_command))
     
     # Message handlers
     application.add_handler(MessageHandler(filters.PHOTO, handle_image))
