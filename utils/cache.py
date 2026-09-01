@@ -5,6 +5,7 @@ Caches embeddings and query results to avoid recomputation
 
 import hashlib
 import time
+from collections import OrderedDict
 from typing import Optional, List, Dict, Any
 import numpy as np
 from .logger import setup_logger
@@ -21,16 +22,37 @@ class RateLimiter:
     process on Render's free tier, so that's not a concern here.
     """
 
-    def __init__(self, limit: int = 10, window_seconds: int = 60):
+    def __init__(self, limit: int = 10, window_seconds: int = 60, max_users: int = 5000):
+        """
+        Args:
+            limit: Max requests allowed per user per window.
+            window_seconds: Length of the fixed window, in seconds.
+            max_users: Maximum number of distinct users to keep counters for.
+                Least-recently-active user is evicted once this cap is hit,
+                so the dict can't grow unbounded on a long-running process
+                (mirrors UserMemory's eviction pattern in utils/memory.py).
+        """
         self.limit = limit
         self.window_seconds = window_seconds
-        # user_id -> (window_expires_at, count_in_window)
-        self._counters: Dict[int, tuple] = {}
+        self.max_users = max_users
+        # user_id -> (window_expires_at, count_in_window). OrderedDict so we
+        # can evict the least-recently-touched user in O(1) once at capacity.
+        self._counters: "OrderedDict[int, tuple]" = OrderedDict()
 
     def allow(self, user_id: int) -> bool:
         """Return True if this request is allowed, False if the user is over their limit."""
         now = time.time()
-        expires_at, count = self._counters.get(user_id, (now + self.window_seconds, 0))
+
+        if user_id in self._counters:
+            expires_at, count = self._counters[user_id]
+            self._counters.move_to_end(user_id)
+        else:
+            expires_at, count = now + self.window_seconds, 0
+            self._counters[user_id] = (expires_at, count)
+            self._counters.move_to_end(user_id)
+            if len(self._counters) > self.max_users:
+                evicted_id, _ = self._counters.popitem(last=False)
+                logger.debug(f"Evicted rate limit counter for least-recently-active user {evicted_id}")
 
         if expires_at < now:
             expires_at = now + self.window_seconds

@@ -203,7 +203,7 @@ async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         f"Bot response: {response}"
     )
 
-    summary = llm.generate(summary_prompt, temperature=0.2)
+    summary = await asyncio.to_thread(llm.generate, summary_prompt, temperature=0.2)
     if isinstance(summary, str) and summary.strip().lower().startswith("error:"):
         summary = response[:220]
 
@@ -245,7 +245,7 @@ async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     try:
-        result = qa_system.answer_question(question)
+        result = await asyncio.to_thread(qa_system.answer_question, question)
         answer = result.get("answer", "No answer generated")
         sources = result.get("sources", {}) if not result.get("error") else {}
 
@@ -305,7 +305,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         image_data = await photo_file.download_as_bytearray()
 
         processing_msg = await update.message.reply_text("🔄 Processing image... Please wait.")
-        result = vision_processor.process_image(bytes(image_data))
+        result = await asyncio.to_thread(vision_processor.process_image, bytes(image_data))
 
         if not result.get("success"):
             error = result.get("error", "Unknown error")
