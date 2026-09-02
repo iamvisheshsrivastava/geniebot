@@ -75,7 +75,18 @@ class OpenRouterLLM:
 
                 if response.status_code == 200:
                     result = response.json()
-                    generated_text = result["choices"][0]["message"]["content"].strip()
+                    # Reasoning models (GLM-4.6 included) can spend the whole
+                    # max_tokens budget on hidden reasoning and return
+                    # content: null instead of text - guard against that
+                    # instead of crashing on .strip().
+                    content = result["choices"][0]["message"].get("content")
+                    generated_text = (content or "").strip()
+                    if not generated_text:
+                        logger.warning(f"LLM ({model_name}) returned empty/null content (likely ran out of max_tokens on reasoning)")
+                        has_next_model = index < len(models_to_try) - 1
+                        if has_next_model:
+                            continue
+                        return "Error: The model didn't return a response. Try a shorter question."
                     if model_name != self.model:
                         logger.warning(f"Switched active OpenRouter model to fallback: {model_name}")
                         self.model = model_name

@@ -137,7 +137,10 @@ Final Answer:"""
             prompt,
             system_prompt=system_prompt,
             temperature=0.2,
-            max_tokens=250,
+            # Reasoning models (e.g. GLM-4.6) spend part of this budget on
+            # hidden reasoning before the visible answer, so this needs more
+            # headroom than a plain non-reasoning model would.
+            max_tokens=800,
         )
         llm_time = time.time() - llm_start
         logger.info(f"LLM response time: {llm_time:.2f}s")

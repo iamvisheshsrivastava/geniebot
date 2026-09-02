@@ -81,7 +81,9 @@ class ImageProcessor:
                         ],
                     }
                 ],
-                "max_tokens": 80,
+                # Reasoning vision models (e.g. GLM-4.6v) spend part of this
+                # budget on hidden reasoning before the visible caption.
+                "max_tokens": 400,
             }
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
@@ -95,7 +97,10 @@ class ImageProcessor:
                 return "Error: Could not process image"
 
             result = response.json()
-            caption = result["choices"][0]["message"]["content"].strip()
+            caption = (result["choices"][0]["message"].get("content") or "").strip()
+            if not caption:
+                logger.warning("Vision model returned empty/null content (likely ran out of max_tokens on reasoning)")
+                return "Error: Could not generate a caption for this image"
             logger.debug(f"Generated caption: {caption}")
             return caption
 
