@@ -50,9 +50,9 @@ OLLAMA_MODEL_PRIORITY = os.getenv("OLLAMA_MODEL_PRIORITY", "")
 OLLAMA_FALLBACK_MODELS = os.getenv("OLLAMA_FALLBACK_MODELS", "tinyllama")
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-nano-9b-v2:free")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "z-ai/glm-4.6")
 OPENROUTER_FALLBACK_MODELS = os.getenv("OPENROUTER_FALLBACK_MODELS", "")
-OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "google/gemma-4-31b-it:free")
+OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "z-ai/glm-4.6v")
 
 STATUS_HOST = os.getenv("STATUS_HOST", "0.0.0.0")
 STATUS_PORT = int(os.getenv("PORT", os.getenv("STATUS_PORT", "8080")))

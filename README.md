@@ -1,11 +1,6 @@
-# GenieBot - RAG + Vision Telegram Assistant  
+# GenieBot - RAG + Vision Telegram Assistant
 
-GenieBot is a Telegram assistant that supports:
-- document-grounded Q&A with RAG
-- image captioning with tags
-- quick summary of the latest chat or image interaction
-
-It uses OpenRouter free-tier models for generation and vision, fastembed for embeddings, and SQLite for persistent vector storage. No local model server or GPU required — it runs comfortably on a free-tier host.
+GenieBot is a Telegram bot that answers questions against a small local document set (RAG), captions and tags photos, and can summarize your last chat or image interaction. I built it to run entirely on free tiers - OpenRouter for the LLM/vision calls, fastembed for embeddings (no torch, no GPU), and SQLite for the vector store - so it comfortably fits on Render's free instance.
 
 ## Quick Access
 
@@ -25,7 +20,7 @@ It uses OpenRouter free-tier models for generation and vision, fastembed for emb
 
 - Python 3.10+
 - python-telegram-bot
-- OpenRouter (hosted LLM + vision, free-tier models) — or Ollama for local dev
+- OpenRouter (`z-ai/glm-4.6` for chat, `z-ai/glm-4.6v` for vision) is the default and what's actually deployed on Render. `LLM_PROVIDER=ollama` still works for local dev if you'd rather point at a model running on your own machine, but the vision pipeline always goes through OpenRouter regardless of that setting.
 - fastembed / sentence-transformers/all-MiniLM-L6-v2 (embeddings, ONNX-based, no torch)
 - SQLite (`data/rag_embeddings.db`)
 
@@ -33,7 +28,7 @@ It uses OpenRouter free-tier models for generation and vision, fastembed for emb
 
 - retrieval top_k: 2
 - chunk_size: 200
-- max_tokens: 250
+- max_tokens: 800 for `/ask` and `/summarize`, 400 for image captioning (higher than you'd expect for a 2-4 sentence answer, because GLM-4.6 is a reasoning model and spends part of that budget on hidden reasoning before it writes the visible response — too low and you get an empty reply)
 - user history: last 3 interactions per user
 
 ## Project Structure
@@ -86,11 +81,13 @@ Create `.env` from `.env.example`. By default `LLM_PROVIDER=openrouter`, which n
 TELEGRAM_BOT_TOKEN=your_token_here
 LLM_PROVIDER=openrouter
 OPENROUTER_API_KEY=your_openrouter_api_key
-OPENROUTER_MODEL=nvidia/nemotron-nano-9b-v2:free
-OPENROUTER_VISION_MODEL=google/gemma-4-31b-it:free
+OPENROUTER_MODEL=z-ai/glm-4.6
+OPENROUTER_VISION_MODEL=z-ai/glm-4.6v
 LOG_LEVEL=INFO
 PORT=8080
 ```
+
+A word of caution on `OPENROUTER_MODEL`/`OPENROUTER_VISION_MODEL`: these are free-tier model IDs, and OpenRouter does retire them from time to time (that's what happened to the model this bot originally shipped with - see closed issue [#8](https://github.com/iamvisheshsrivastava/geniebot/issues/8)). If `/ask` or `/summarize` start failing in production, check https://openrouter.ai/models?max_price=0 for what's still free before assuming it's a code problem.
 
 To use a local Ollama server instead, set `LLM_PROVIDER=ollama` and configure `OLLAMA_BASE_URL` / `OLLAMA_MODEL` (see `.env.example`); note the vision pipeline always calls OpenRouter regardless of `LLM_PROVIDER`.
 
@@ -105,6 +102,17 @@ python scripts/build_vector_db.py --data-dir data --db-path data/rag_embeddings.
 ```bash
 python app.py
 ```
+
+## Testing
+
+There's a small pytest suite for the parts that would actually leak memory or break silently if they had bugs - `RateLimiter`, `UserMemory`, and the two RAM caches:
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/
+```
+
+It doesn't touch RAG retrieval, the LLM clients, or the Telegram handlers - those depend on OpenRouter/Ollama and Telegram's API, so they'd need mocking to test properly and that's not done yet.
 
 ## Deploy (free tier)
 
@@ -185,7 +193,9 @@ flowchart TD
 - RAM only: QueryCache, EmbeddingCache, user interaction history
 - Logs: `logs/geniebot_YYYYMMDD.log` (daily file name, no auto-rotation cleanup)
 
-## Assignment Notes
+## Notes and Known Limitations
 
-- RAG is optimized for concise answers with grounded context.
-- Repeated same questions are served from in-memory query cache when available.
+- The RAG prompt is tuned for short, grounded answers (2-4 sentences) rather than long-form responses - it's a Telegram bot, not a research assistant.
+- Repeated questions are served from the in-memory query cache, so they come back instantly, but the cache doesn't persist across restarts.
+- Rate limiting and user memory are single-process, in-memory structures (see `utils/cache.py` and `utils/memory.py`). That's fine for the one Render instance this actually runs on, but it wouldn't hold up if this were ever scaled to multiple workers.
+- `/health` only checks that the process is alive, not that OpenRouter is actually reachable or that the configured model still exists - that gap is what let issue [#8](https://github.com/iamvisheshsrivastava/geniebot/issues/8) go unnoticed for a while.

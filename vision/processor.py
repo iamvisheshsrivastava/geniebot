@@ -24,7 +24,7 @@ class ImageProcessor:
     def __init__(
         self,
         api_key: str,
-        model: str = "google/gemma-4-31b-it:free",
+        model: str = "z-ai/glm-4.6v",
         site_url: str = "https://github.com/iamvisheshsrivastava/geniebot",
         timeout: int = 60,
     ):

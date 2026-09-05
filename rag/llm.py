@@ -24,7 +24,7 @@ class OpenRouterLLM:
     def __init__(
         self,
         api_key: str,
-        model: str = "nvidia/nemotron-nano-9b-v2:free",
+        model: str = "z-ai/glm-4.6",
         fallback_models: Optional[list[str]] = None,
         timeout: int = 60,
         site_url: str = "https://github.com/iamvisheshsrivastava/geniebot",

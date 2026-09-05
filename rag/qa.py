@@ -162,8 +162,8 @@ Final Answer:"""
             logger.error(f"LLM generation failed for question '{question[:50]}...': {answer}")
             return {
                 "answer": (
-                    "I could not generate an answer right now because the local LLM is unavailable. "
-                    "Please check Ollama/model status and try again."
+                    "I could not generate an answer right now because the LLM backend is unavailable. "
+                    "Please check the provider/model status and try again."
                 ),
                 "sources": {},
                 "cached": False,
