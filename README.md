@@ -1,5 +1,7 @@
 # GenieBot - RAG + Vision Telegram Assistant
 
+[![Tests](https://github.com/iamvisheshsrivastava/geniebot/actions/workflows/tests.yml/badge.svg)](https://github.com/iamvisheshsrivastava/geniebot/actions/workflows/tests.yml)
+
 GenieBot is a Telegram bot that answers questions against a small local document set (RAG), captions and tags photos, and can summarize your last chat or image interaction. I built it to run entirely on free tiers - OpenRouter for the LLM/vision calls, fastembed for embeddings (no torch, no GPU), and SQLite for the vector store - so it comfortably fits on Render's free instance.
 
 ## Quick Access
@@ -105,14 +107,18 @@ python app.py
 
 ## Testing
 
-There's a small pytest suite for the parts that would actually leak memory or break silently if they had bugs - `RateLimiter`, `UserMemory`, and the two RAM caches:
+There's a pytest suite (47 tests, runs in CI on every push/PR via `.github/workflows/tests.yml`) covering the parts that would actually leak memory, misrank retrieval, or break silently on a model outage:
+
+- `RateLimiter`, `UserMemory`, and the two RAM caches (`EmbeddingCache`, `QueryCache`)
+- `rag/system.py` - document chunking/overlap, the SQLite index-signature invalidation logic, and cosine-similarity retrieval ranking
+- `rag/llm.py` - the Ollama/OpenRouter fallback-model chains and the retry-on-error heuristics, fully mocked (no live Ollama/OpenRouter calls)
 
 ```bash
 pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-It doesn't touch RAG retrieval, the LLM clients, or the Telegram handlers - those depend on OpenRouter/Ollama and Telegram's API, so they'd need mocking to test properly and that's not done yet.
+It still doesn't touch the Telegram handlers themselves - those depend on `python-telegram-bot`'s update objects and would need a different mocking approach.
 
 ## Deploy (free tier)
 
