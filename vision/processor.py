@@ -15,6 +15,9 @@ from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
+MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
+MAX_IMAGE_PIXELS = 25_000_000  # guards against decompression bombs
+
 
 class ImageProcessor:
     """Process images for captioning and tagging using a hosted vision LLM."""
@@ -39,11 +42,17 @@ class ImageProcessor:
     def _load_image(self, image_input) -> Image.Image:
         if isinstance(image_input, Image.Image):
             return image_input
-        if isinstance(image_input, bytes):
-            return Image.open(io.BytesIO(image_input))
-        if hasattr(image_input, "read"):
-            return Image.open(image_input)
-        raise ValueError("Invalid image input")
+        if isinstance(image_input, (bytes, bytearray)):
+            if len(image_input) > MAX_IMAGE_BYTES:
+                raise ValueError("Image is too large (max 10 MB)")
+            image = Image.open(io.BytesIO(bytes(image_input)))
+        elif hasattr(image_input, "read"):
+            image = Image.open(image_input)
+        else:
+            raise ValueError("Invalid image input")
+        if image.width * image.height > MAX_IMAGE_PIXELS:
+            raise ValueError("Image dimensions are too large")
+        return image
 
     def _to_data_url(self, image: Image.Image) -> str:
         max_size = 768
@@ -106,6 +115,8 @@ class ImageProcessor:
 
         except Exception as e:
             logger.error(f"Error generating caption: {e}")
+            if isinstance(e, ValueError) and "too large" in str(e):
+                return f"Error: {e}"
             return "Error: Could not process image"
 
     def extract_tags(self, caption: str, num_tags: int = 3) -> List[str]:
@@ -134,6 +145,8 @@ class ImageProcessor:
         logger.info("Starting image processing")
         try:
             caption = self.generate_caption(image_input)
+            if caption.startswith("Error:") or caption == "Image processing model not available":
+                return {"caption": caption, "tags": [], "success": False, "error": caption}
             tags = self.extract_tags(caption, num_tags=3)
             result = {"caption": caption, "tags": tags, "success": True}
             logger.info(f"Image processing complete: {caption[:50]}...")

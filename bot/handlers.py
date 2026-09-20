@@ -10,6 +10,8 @@ from utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 MAX_TELEGRAM_MSG_LEN = 4000
+MAX_QUESTION_LEN = 1000
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 
 async def _safe_reply_text(message, text: str, markdown: bool = True) -> None:
@@ -184,6 +186,9 @@ async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await _safe_reply_text(update.message, f"No {mode} interaction found to summarize.", markdown=False)
         return
 
+    if not await _check_rate_limit(update, context, user_id):
+        return
+
     processing_msg = await update.message.reply_text("📝 Summarizing the last interaction...")
 
     interaction_type = target.get("type", "text")
@@ -231,6 +236,13 @@ async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     question = " ".join(context.args)
+    if len(question) > MAX_QUESTION_LEN:
+        await _safe_reply_text(
+            update.message,
+            f"❌ Question too long ({len(question)} chars). Max is {MAX_QUESTION_LEN}.",
+            markdown=False,
+        )
+        return
     await _safe_reply_text(
         update.message,
         "🔍 Searching and analyzing... This may take a moment.",
@@ -268,7 +280,7 @@ async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         logger.info(f"Answer provided to user {user_id}")
     except Exception as exc:
         logger.error(f"Error in ask command: {exc}")
-        await _safe_reply_text(update.message, f"❌ Error: {exc}", markdown=False)
+        await _safe_reply_text(update.message, "❌ Something went wrong answering that. Please try again later.", markdown=False)
 
 
 async def image_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -301,6 +313,9 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     try:
         photo = update.message.photo[-1]
+        if photo.file_size and photo.file_size > MAX_IMAGE_BYTES:
+            await _safe_reply_text(update.message, "❌ Image too large (max 10 MB).", markdown=False)
+            return
         photo_file = await photo.get_file()
         image_data = await photo_file.download_as_bytearray()
 
@@ -310,7 +325,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         if not result.get("success"):
             error = result.get("error", "Unknown error")
             logger.error(f"Image processing error: {error}")
-            await processing_msg.edit_text(f"❌ Error processing image: {error}")
+            await processing_msg.edit_text("❌ Could not process this image. Please try another.")
             return
 
         caption = result.get("caption", "No caption generated")
@@ -328,7 +343,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         logger.info(f"Image processed for user {user_id}")
     except Exception as exc:
         logger.error(f"Error handling image: {exc}")
-        await _safe_reply_text(update.message, f"❌ Error processing image: {exc}", markdown=False)
+        await _safe_reply_text(update.message, "❌ Error processing image. Please try again later.", markdown=False)
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
