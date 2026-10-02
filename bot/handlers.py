@@ -61,16 +61,11 @@ def _convert_markdown_to_telegram(text: str) -> str:
     return '\n'.join(converted)
 
 
-def _escape_markdown_v2(text: str, preserve_formatting: bool = False) -> str:
-    """For Markdown (not MarkdownV2), just return text as-is since basic Markdown is forgiving."""
-    return text
-
-
 def _format_sources(sources: dict) -> str:
     """Format unique source file names for response display."""
     if not sources:
         return ""
-    lines = ["", "📚 **Sources:**"]
+    lines = ["", "", "📚 *Sources:*"]
     for source in sources.keys():
         lines.append(f"• {source}")
     return "\n".join(lines)
@@ -269,12 +264,8 @@ async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         # Format response with heading conversion
         formatted_answer = _convert_markdown_to_telegram(answer)
-        source_list = ""
-        if sources:
-            source_list = "\n\n📚 *Sources:*\n"
-            for source in sources.keys():
-                source_list += f"• {source}\n"
-        
+        source_list = _format_sources(sources)
+
         response = f"🤖 *Answer:*\n{formatted_answer}{source_list}"
         await _send_long_response(update.message, response, markdown=True)
         logger.info(f"Answer provided to user {user_id}")
