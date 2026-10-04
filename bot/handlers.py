@@ -252,7 +252,13 @@ async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     try:
-        result = await asyncio.to_thread(qa_system.answer_question, question)
+        conversation_context = user_memory.get_context(user_id) if user_memory else ""
+        result = await asyncio.to_thread(
+            qa_system.answer_question,
+            question,
+            True,
+            conversation_context,
+        )
         answer = result.get("answer", "No answer generated")
         sources = result.get("sources", {}) if not result.get("error") else {}
 

@@ -59,23 +59,31 @@ class RAGQA:
     def answer_question(
         self,
         question: str,
-        use_cache: bool = True
+        use_cache: bool = True,
+        conversation_context: str = ""
     ) -> Dict[str, any]:
         """
         Answer a question using RAG
-        
+
         Args:
             question: User question
             use_cache: Use cache if available
-        
+            conversation_context: Optional formatted text of the user's recent
+                prior interactions (e.g. from UserMemory.get_context()), used
+                to let the LLM resolve conversational follow-ups ("what about
+                the enterprise plan?"). Kept separate from the retrieved
+                document chunks and bypasses the cache, since the same
+                question can have a different answer depending on context.
+
         Returns:
             Dictionary with answer, sources, and metadata
         """
         overall_start = time.time()
         logger.info(f"Processing question: {question[:50]}...")
-        
-        # Check cache
-        if use_cache and self.query_cache:
+
+        # Check cache (skipped when conversation context is present, since
+        # the cached answer wouldn't account for the follow-up context)
+        if use_cache and self.query_cache and not conversation_context:
             cached_answer = self.query_cache.get(question)
             if cached_answer:
                 logger.debug("Returning cached answer")
@@ -113,7 +121,16 @@ class RAGQA:
             "I could not find that in the loaded documents."
         )
 
-        prompt = f"""Context:
+        conversation_section = ""
+        if conversation_context:
+            conversation_section = (
+                "Recent conversation with this user (for resolving follow-up "
+                "questions like \"what about X?\" only - the Context below is "
+                "still the sole source of facts for the answer):\n"
+                f"{conversation_context}\n"
+            )
+
+        prompt = f"""{conversation_section}Context:
 {context}
 
 Question: {question}
@@ -171,8 +188,10 @@ Final Answer:"""
                 "details": answer,
             }
         
-        # Cache the result
-        if use_cache and self.query_cache:
+        # Cache the result (skipped when conversation context was used, so a
+        # context-free repeat of the same question doesn't reuse an answer
+        # that was shaped by someone else's follow-up context)
+        if use_cache and self.query_cache and not conversation_context:
             self.query_cache.put(question, answer)
         
         total_time = time.time() - overall_start
