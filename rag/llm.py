@@ -14,7 +14,7 @@ logger = setup_logger(__name__)
 class OpenRouterLLM:
     """Interface to OpenRouter's hosted chat-completions API.
 
-    Implements the same public surface as OllamaLLM (generate/chat/
+    Implements the same public surface as OllamaLLM (generate/
     is_available/get_available_models) so it's a drop-in replacement
     wherever an LLM instance is used.
     """
@@ -116,18 +116,6 @@ class OpenRouterLLM:
                 return "Error: Failed to connect to OpenRouter."
 
         return last_error
-
-    def chat(self, messages: list, temperature: float = 0.7) -> str:
-        try:
-            response = self._complete(messages, self.model, temperature, None)
-            if response.status_code == 200:
-                result = response.json()
-                return result["choices"][0]["message"]["content"].strip()
-            logger.error(f"OpenRouter chat error: {response.status_code} - {response.text[:300]}")
-            return f"Error: OpenRouter returned status {response.status_code}"
-        except requests.exceptions.RequestException as e:
-            logger.error(f"OpenRouter chat request failed: {e}")
-            return "Error: Failed to communicate with OpenRouter"
 
     def is_available(self) -> bool:
         return bool(self.api_key)
@@ -312,55 +300,7 @@ class OllamaLLM:
                 return "Error: Failed to connect to Ollama. Is it running?"
 
         return last_error
-    
-    def chat(
-        self,
-        messages: list,
-        temperature: float = 0.7
-    ) -> str:
-        """
-        Chat-style generation using Ollama
-        
-        Args:
-            messages: List of message dicts with 'role' and 'content'
-            temperature: Sampling temperature
-        
-        Returns:
-            Generated response
-        """
-        logger.debug("Chat generation")
-        
-        try:
-            response = requests.post(
-                f"{self.base_url}/api/chat",
-                json={
-                    "model": self.model,
-                    "messages": messages,
-                    "stream": False,
-                    "temperature": temperature,
-                },
-                timeout=self.timeout
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                message = result.get("message", {})
-                generated_text = message.get("content", "").strip()
-                return generated_text
-            else:
-                error_detail = _extract_ollama_error(response)
-                logger.error(
-                    f"Chat error: {response.status_code}"
-                    + (f" - {error_detail}" if error_detail else "")
-                )
-                if error_detail:
-                    return f"Error: Ollama returned status {response.status_code}. {error_detail}"
-                return f"Error: Ollama returned status {response.status_code}"
-        
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Chat request failed: {e}")
-            return "Error: Failed to communicate with Ollama"
-    
+
     def is_available(self) -> bool:
         """Check if Ollama is available"""
         try:

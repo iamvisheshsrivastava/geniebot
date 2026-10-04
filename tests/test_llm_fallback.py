@@ -185,3 +185,20 @@ def test_openrouter_generate_no_fallback_configured_returns_last_error(monkeypat
 
     result = llm.generate("hello")
     assert "500" in result
+
+
+# ---------------------------------------------------------------------------
+# chat() removal (issue #17) - it was dead code with none of generate()'s
+# fallback-model or empty-content handling, and nothing in the codebase
+# ever called it. Pin down that it's gone rather than left to silently rot.
+# ---------------------------------------------------------------------------
+
+
+def test_ollama_chat_method_removed(monkeypatch):
+    llm = _make_ollama(monkeypatch)
+    assert not hasattr(llm, "chat")
+
+
+def test_openrouter_chat_method_removed():
+    llm = OpenRouterLLM(api_key="key", model="only-model")
+    assert not hasattr(llm, "chat")
