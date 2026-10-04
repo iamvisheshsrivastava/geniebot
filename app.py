@@ -25,6 +25,8 @@ from bot import (
     help_command,
     ask_command,
     summarize_command,
+    export_command,
+    stats_command,
     image_command,
     handle_image,
     clear_command,
@@ -364,6 +366,8 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("ask", ask_command))
     application.add_handler(CommandHandler("summarize", summarize_command))
+    application.add_handler(CommandHandler("export", export_command))
+    application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("image", image_command))
     application.add_handler(CommandHandler("clear", clear_command))
     

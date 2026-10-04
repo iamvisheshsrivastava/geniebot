@@ -138,6 +138,8 @@ The bot itself doesn't need inbound HTTP (it long-polls Telegram), the status se
 - `/ask <question>` - document-grounded answer
 - `/image` - upload image for caption + tags
 - `/summarize [chat|image]` - summarize latest interaction
+- `/export` - download your saved conversation history as a file
+- `/stats` - see your saved history and rate-limit status
 - `/clear` - clear your saved conversation history
 
 ## Demo Screenshots

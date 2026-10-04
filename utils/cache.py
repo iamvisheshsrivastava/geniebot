@@ -71,6 +71,18 @@ class RateLimiter:
         expires_at, _ = self._counters.get(user_id, (0, 0))
         return max(0, int(expires_at - time.time()))
 
+    def remaining(self, user_id: int) -> int:
+        """Requests this user has left in the current window.
+
+        Read-only - unlike allow(), this does not consume a request or
+        touch LRU ordering, so it's safe to call from a status/stats
+        command without affecting the user's actual quota.
+        """
+        expires_at, count = self._counters.get(user_id, (0, 0))
+        if expires_at < time.time():
+            return self.limit
+        return max(0, self.limit - count)
+
 
 class EmbeddingCache:
     """Cache for text embeddings"""

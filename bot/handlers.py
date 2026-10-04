@@ -1,8 +1,10 @@
 """Telegram command handlers for GenieBot."""
 
 import asyncio
+import io
+import json
 
-from telegram import Update
+from telegram import InputFile, Update
 from telegram.ext import ContextTypes
 
 from utils.logger import setup_logger
@@ -99,6 +101,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "• /ask <query> - Ask questions from local documents\n"
         "• /image - Upload an image for caption + tags\n"
         "• /summarize [chat|image] - Summarize your recent interaction\n"
+        "• /export - Download your conversation history\n"
+        "• /stats - See your history and rate-limit status\n"
         "• /clear - Clear your saved conversation history\n"
         "• /help - Show usage instructions\n\n"
         "GenieBot keeps your last 3 interactions for better continuity."
@@ -120,9 +124,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "GenieBot returns one caption and three tags.\n\n"
         "*3. /summarize [chat|image]*\n"
         "Summarize your latest chat or latest image result.\n\n"
-        "*4. /clear*\n"
+        "*4. /export*\n"
+        "Download your saved conversation history as a file.\n\n"
+        "*5. /stats*\n"
+        "See how much history is saved and your rate-limit status.\n\n"
+        "*6. /clear*\n"
         "Clear your saved conversation history.\n\n"
-        "*5. /start*\n"
+        "*7. /start*\n"
         "Shows the quick command summary."
     )
     await _safe_reply_text(update.message, help_text, markdown=True)
@@ -140,6 +148,59 @@ async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     user_memory.clear_history(user_id)
     await _safe_reply_text(update.message, "🗑️ Your conversation history has been cleared.", markdown=False)
+
+
+async def export_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /export command to download the user's conversation history."""
+    user_id = update.effective_user.id
+    logger.info(f"User {user_id} used /export command")
+
+    user_memory = context.bot_data.get("user_memory")
+    if not user_memory:
+        await _safe_reply_text(update.message, "❌ Memory system not initialized", markdown=False)
+        return
+
+    history = user_memory.get_history(user_id)
+    if not history:
+        await _safe_reply_text(update.message, "📝 No interaction history to export yet.", markdown=False)
+        return
+
+    payload = json.dumps(history, indent=2, ensure_ascii=False)
+    file_buffer = io.BytesIO(payload.encode("utf-8"))
+    file_buffer.name = "geniebot_history.json"
+
+    await update.message.reply_document(
+        document=InputFile(file_buffer, filename="geniebot_history.json"),
+        caption=f"🗂️ Your last {len(history)} interaction(s).",
+    )
+    logger.info(f"Exported {len(history)} interactions for user {user_id}")
+
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /stats command exposing per-user history and rate-limit status."""
+    user_id = update.effective_user.id
+    logger.info(f"User {user_id} used /stats command")
+
+    user_memory = context.bot_data.get("user_memory")
+    rate_limiter = context.bot_data.get("rate_limiter")
+
+    history_line = "Unavailable"
+    if user_memory:
+        history = user_memory.get_history(user_id)
+        history_line = f"{len(history)} / {user_memory.max_history} saved interaction(s)"
+
+    rate_line = "Unavailable"
+    if rate_limiter:
+        remaining = rate_limiter.remaining(user_id)
+        reset_in = rate_limiter.seconds_until_reset(user_id)
+        rate_line = f"{remaining} / {rate_limiter.limit} requests left (resets in {reset_in}s)"
+
+    text = (
+        "📊 *Your GenieBot status*\n\n"
+        f"🧠 History: {history_line}\n"
+        f"⏳ Rate limit: {rate_line}"
+    )
+    await _safe_reply_text(update.message, text, markdown=True)
 
 
 async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
