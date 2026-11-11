@@ -3,6 +3,7 @@
 import asyncio
 import io
 import json
+import re
 
 from telegram import InputFile, Update
 from telegram.error import RetryAfter
@@ -60,27 +61,39 @@ async def _send_long_response(message, text: str, markdown: bool = True) -> None
         await _safe_reply_text(message, chunk, markdown=markdown)
 
 
+def _heading_text(raw: str) -> str:
+    """Return heading text that is safe to wrap in a single pair of *...*.
+
+    Telegram's legacy Markdown cannot nest emphasis, so an emphasised span inside
+    a heading (``### **Important** heading``) is flattened to its plain text and
+    any leftover asterisk is dropped; otherwise the heading branch would wrap
+    already-converted text and emit unbalanced asterisks (issue #23 review).
+    """
+    raw = re.sub(r"\*\*(.+?)\*\*", r"\1", raw)
+    return raw.replace('*', '').strip()
+
+
 def _convert_markdown_to_telegram(text: str) -> str:
-    """Convert Markdown to plain text with emoji headers (Telegram Markdown doesn't support #)."""
+    """Convert Markdown to Telegram Markdown (emoji headers + single-asterisk bold)."""
     lines = text.split('\n')
     converted = []
-    
+
     for line in lines:
         # Convert ### Heading -> 📌 Heading
         if line.startswith('### '):
-            heading = line[4:].strip()
-            converted.append(f"📌 *{heading}*")
+            converted.append(f"📌 *{_heading_text(line[4:])}*")
         # Convert ## Heading -> 🔹 Heading
         elif line.startswith('## '):
-            heading = line[3:].strip()
-            converted.append(f"🔹 *{heading}*")
+            converted.append(f"🔹 *{_heading_text(line[3:])}*")
         # Convert # Heading -> 📍 Heading
         elif line.startswith('# '):
-            heading = line[2:].strip()
-            converted.append(f"📍 *{heading}*")
+            converted.append(f"📍 *{_heading_text(line[2:])}*")
         else:
-            converted.append(line)
-    
+            # Telegram's legacy Markdown only supports single-asterisk *bold*,
+            # so translate **bold** on body text only (issue #21). Headings are
+            # handled above and must not go through this substitution.
+            converted.append(re.sub(r"\*\*(.+?)\*\*", r"*\1*", line))
+
     return '\n'.join(converted)
 
 
